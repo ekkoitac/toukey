@@ -1,0 +1,61 @@
+# =============================================================================
+# 嵌入式技术栈 —— 条件加载表(占位)
+# -----------------------------------------------------------------------------
+# 当前留作扩展点,实际 references 文档由嵌入式团队后续补充。
+# =============================================================================
+
+# ---------- Full 级别展开维度(Q-depth 评估表中供用户勾选) ----------
+depth_dimensions:
+  - id: hardware_interface
+    label: 硬件接口与外设驱动
+    applicable_when: 新增/修改 HAL/BSP/驱动层代码
+  - id: interrupt_realtime
+    label: 中断与实时性
+    applicable_when: ISR、DMA、实时调度、时序约束
+  - id: memory_budget
+    label: 内存预算与分配
+    applicable_when: Stack/Heap/Static 占用分析、内存池设计
+  - id: task_scheduling
+    label: 任务调度与同步
+    applicable_when: RTOS 任务划分、信号量/互斥锁、优先级反转
+  - id: power_management
+    label: 功耗管理
+    applicable_when: 低功耗模式、唤醒策略、休眠状态机
+  - id: protocol_comm
+    label: 通信协议
+    applicable_when: UART/SPI/I2C/CAN/BLE/WiFi 协议栈交互
+  - id: bootloader_ota
+    label: Bootloader 与 OTA
+    applicable_when: 固件升级流程、分区策略、回滚机制
+
+mandatory:
+  # 当前使用通用黄金样本。嵌入式团队准备好专属样本后，改为:
+  #   file: ../../examples/embedded-high-quality-trd.md
+  - file: ../../examples/high-quality-trd.md
+    label: 黄金样本(质量锚点)
+    reason: 即使技术栈差异大,设计意图深度与伪代码+白话的写作要求一致。当前为通用样本(偏前端),对标时只学写作深度,用嵌入式原生术语和思考维度填充
+
+# 嵌入式专属判定示例(注释,作为模板):
+#
+# conditions:
+#   - id: E1
+#     label: 涉及中断 / DMA / 实时性?
+#     file: realtime-guide.md
+#     quick_check: 是否在 ISR、回调、调度器中执行业务逻辑?
+#
+#   - id: E2
+#     label: 涉及外设驱动改动?
+#     file: peripheral-guide.md
+#     quick_check: 是否新增/修改 HAL / BSP / 驱动层代码?
+#
+#   - id: E3
+#     label: 涉及内存受限场景?
+#     file: memory-budget-guide.md
+#     quick_check: 是否需要明确 stack / heap / static 占用?
+conditions: []
+
+fallback_note: |
+  当前嵌入式尚无专属 guide 文件。
+  生成 §4 时须 Read references/stack-thinking-skeleton.md 中「嵌入式」相关章节，
+  按其核心设计问题和设计意图必答题展开。
+  关键设计维度：中断/DMA 实时性、任务调度与同步、内存预算、外设驱动分层、功耗状态机。

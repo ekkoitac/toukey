@@ -1,0 +1,68 @@
+# =============================================================================
+# 后台 / 服务端技术栈 —— 条件加载表(占位)
+# -----------------------------------------------------------------------------
+# 本文件结构与 frontend/loaders.yaml 完全一致。
+# 当前由后台团队后续补充实际 references 文档(如 api-design-guide.md、
+# data-model-guide.md、async-flow-guide.md 等),并把对应判定条件挂到下方。
+# =============================================================================
+
+# ---------- Full 级别展开维度(Q-depth 评估表中供用户勾选) ----------
+depth_dimensions:
+  - id: api_contract
+    label: API 契约设计
+    applicable_when: 新增/修改对外 HTTP/RPC/GraphQL 接口
+  - id: data_model
+    label: 数据模型与 Schema 变更
+    applicable_when: 新增表、加字段、索引变更、数据迁移
+  - id: service_orchestration
+    label: 服务编排与调用链
+    applicable_when: 跨服务调用、消息通信、事件驱动流程
+  - id: concurrency
+    label: 并发与一致性
+    applicable_when: 锁策略、事务边界、幂等设计、竞态场景
+  - id: async_flow
+    label: 异步任务与消息消费
+    applicable_when: Worker/Consumer/定时任务/延迟队列
+  - id: auth_security
+    label: 权限与安全模型
+    applicable_when: 鉴权变更、数据隔离、合规约束
+  - id: observability
+    label: 可观测性
+    applicable_when: 日志/指标/链路追踪的埋点方案
+  - id: migration_compat
+    label: 兼容性与迁移策略
+    applicable_when: Breaking change、灰度策略、双写、回滚方案
+
+mandatory:
+  # 当前使用通用黄金样本。后台团队准备好专属样本后，改为:
+  #   file: ../../examples/backend-high-quality-trd.md
+  - file: ../../examples/high-quality-trd.md
+    label: 黄金样本(质量锚点)
+    reason: 写作风格、设计意图深度、伪代码+白话解读的标杆;后台 TRD 同样不得低于该样本厚度。当前为通用样本(偏前端),对标时只学写作深度,用后端原生术语和思考维度填充
+
+# 条件留空,所有判定默认不命中,只读黄金样本。
+# 后台团队补充示例(注释掉,作为模板):
+#
+# conditions:
+#   - id: B1
+#     label: 涉及对外 HTTP/RPC 接口?
+#     file: api-design-guide.md
+#     quick_check: 改动方案中是否新增/修改 controller / handler / proto?
+#
+#   - id: B2
+#     label: 涉及数据模型变更或迁移?
+#     file: data-model-guide.md
+#     quick_check: 是否新增表、加字段、加索引、写迁移脚本?
+#
+#   - id: B3
+#     label: 涉及异步任务 / 消息消费 / 定时任务?
+#     file: async-flow-guide.md
+#     quick_check: 是否新增 worker / consumer / scheduler?
+conditions: []
+
+fallback_note: |
+  当前后台尚无专属 guide 文件。
+  生成 §4 时须 Read references/stack-thinking-skeleton.md 中「后端」相关章节，
+  按其核心设计问题和设计意图必答题展开。
+  关键设计维度：API 契约与错误码、事务边界与并发安全、领域模型、
+  Repository 模式、异步任务编排、幂等与重试、可观测性埋点。

@@ -1,0 +1,407 @@
+# =============================================================================
+# TRD Generator —— 顶层数据路由
+# -----------------------------------------------------------------------------
+# 本文件仅提供「查表数据」，供 SKILL.md Step 2 按步骤流程消费。
+# 流程逻辑（检测顺序、分支处理、询问时机）全部在 SKILL.md Step 2 中定义。
+#
+# 拓展方式:
+#   - 新增技术栈 → 在 tech_stacks 下加一项 + 创建 references/<stack>/ 子目录
+#   - 调整条件加载 → 改 references/<stack>/loaders.yaml
+# =============================================================================
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Monorepo 检测信号
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+monorepo_detection:
+
+  # A. 工具链信号（任一命中即判定为 monorepo）
+  signals_tooling:
+    - file_exists: ["pnpm-workspace.yaml"]
+    - file_exists: ["lerna.json"]
+    - file_exists: ["nx.json"]
+    - file_exists: ["turbo.json"]
+    - file_exists: ["rush.json"]
+    - file_exists: ["package.json"]
+      contents_match: "\"workspaces\""
+    - dir_pattern: ["packages/*/package.json", "apps/*/package.json"]
+    - dir_pattern: ["packages/*/pubspec.yaml"]
+    - dir_pattern: ["modules/*/build.gradle"]
+    - file_exists: ["pom.xml"]
+      contents_match: "<modules>"
+    - file_exists: ["Cargo.toml"]
+      contents_match: "\\[workspace\\]"
+
+  # B. 裸目录信号（≥2 个含包管理文件的一级子目录，且命中白名单或 ≥3 个）
+  signals_naive:
+    package_files:
+      - package.json
+      - pubspec.yaml
+      - pom.xml
+      - build.gradle
+      - go.mod
+      - Cargo.toml
+      - requirements.txt
+      - pyproject.toml
+      - setup.py
+      - composer.json
+
+    known_layout_names:
+      - client
+      - server
+      - web
+      - api
+      - frontend
+      - backend
+      - bff
+      - admin
+      - console
+      - dashboard
+      - portal
+      - gateway
+      - mobile
+      - desktop
+      - electron
+      - app
+      - h5
+      - pc
+      - ios
+      - android
+      - mini-program
+      - miniprogram
+      - mp-weixin
+      - mp-alipay
+      - shared
+      - common
+      - core
+      - sdk
+      - lib
+
+    excluded_dir_names:
+      - test
+      - tests
+      - example
+      - examples
+      - demo
+      - demos
+      - docs
+      - doc
+      - scripts
+      - tools
+      - tool
+      - build
+      - _build
+      - dist
+      - out
+      - target
+      - .cache
+      - .git
+      - node_modules
+      - vendor
+      - third_party
+      - playground
+      - sandbox
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 技术栈检测规则
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# 检测优先级: 1) architecture.md 关键词匹配  2) 文件存在性探测
+# 具体流程见 SKILL.md Step 2.4
+
+tech_stacks:
+
+  frontend:
+    label: 前端 / 跨端（Web + Flutter + RN）
+    requires_role_disambiguation: false
+    architecture_md_hints:
+      keywords:
+        - React
+        - Vue
+        - Angular
+        - Svelte
+        - Next.js
+        - Nuxt
+        - Vite
+        - Webpack
+        - Electron
+        - Tauri
+        - Flutter
+        - Dart
+        - React Native
+        - Bloc
+        - Riverpod
+        - Provider
+        - Lottie
+      categories:
+        - UI 框架
+        - SPA 框架
+        - SSR 框架
+        - 跨端框架
+        - 路由
+        - 状态管理
+        - 组件库
+      directory_signals:
+        - pages/
+        - views/
+        - components/
+        - widgets/
+        - screens/
+        - src/
+    detect:
+      - file_exists: ["package.json"]
+        negative_signals: ["android/app/build.gradle"]
+      - file_exists: ["pubspec.yaml"]
+        contents_match: "flutter:"
+      - file_exists: ["package.json"]
+        contents_match: "react-native"
+    references_dir: frontend/
+
+  android:
+    label: Android 原生
+    requires_role_disambiguation: false
+    architecture_md_hints:
+      keywords:
+        - Jetpack Compose
+        - Android
+        - Kotlin
+        - Java
+        - ViewModel
+        - LiveData
+        - StateFlow
+        - Room
+        - Retrofit
+        - Hilt
+        - Dagger
+        - Navigation Component
+        - DataBinding
+        - ViewBinding
+      categories:
+        - Android 框架
+        - 原生 SDK
+        - MVVM
+        - MVP
+        - 依赖注入
+      directory_signals:
+        - app/src/main/
+        - activities/
+        - fragments/
+        - viewmodels/
+        - repositories/
+    detect:
+      - file_exists: ["android/app/build.gradle"]
+      - file_exists: ["app/build.gradle"]
+        contents_match: "com.android.application|android {"
+      - file_exists: ["build.gradle.kts"]
+        contents_match: "com.android.application"
+    references_dir: android/
+
+  backend:
+    label: 后台 / 服务端
+    requires_role_disambiguation: true
+    architecture_md_hints:
+      keywords:
+        - Egg.js
+        - Egg
+        - Express
+        - Koa
+        - NestJS
+        - Nest
+        - Spring
+        - Spring Boot
+        - Django
+        - Flask
+        - FastAPI
+        - Gin
+        - Echo
+        - Fiber
+        - Actix
+        - Axum
+        - Rocket
+        - gRPC
+      categories:
+        - Web 框架
+        - 服务端框架
+        - ORM
+        - 消息队列
+        - RPC
+        - 中间件
+        - 缓存
+      directory_signals:
+        - controllers/
+        - handlers/
+        - services/
+        - middleware/
+        - rpc/
+        - proto/
+    detect:
+      - file_exists: ["app.js"]
+        contents_match: "\"egg\""
+      - file_exists: ["nest-cli.json"]
+      - file_exists: ["pom.xml", "build.gradle"]
+        contents_match: "spring-boot|spring-web"
+      - file_exists: ["go.mod"]
+      - file_exists: ["manage.py", "requirements.txt"]
+      - file_exists: ["Cargo.toml"]
+        contents_match: "actix-web|axum|rocket"
+    references_dir: backend/
+
+  sdk:
+    label: SDK / 库 / 工具包
+    requires_role_disambiguation: true
+    architecture_md_hints:
+      keywords:
+        - exports
+        - public API
+        - semver
+        - breaking change
+        - SDK
+        - library
+        - client library
+        - npm package
+        - crate
+        - module
+      categories:
+        - SDK
+        - 客户端库
+        - 工具库
+        - 公共包
+        - npm 包
+        - library
+      directory_signals:
+        - src/
+        - lib/
+        - dist/
+    detect:
+      # Web SDK: package.json 有 main/exports/types 且无 pages/screens/views/app 目录
+      - file_exists: ["package.json"]
+        contents_match: "\"main\"|\"exports\"|\"types\"|\"typings\""
+        negative_signals: ["pages/", "screens/", "views/", "app/"]
+      # Android library
+      - file_exists: ["build.gradle"]
+        contents_match: "com.android.library|libraryVariants"
+      # Rust crate (lib)
+      - file_exists: ["Cargo.toml"]
+        contents_match: "\\[lib\\]"
+        negative_signals: ["\\[\\[bin\\]\\]"]
+      # Python 包
+      - file_exists: ["setup.py", "pyproject.toml"]
+        contents_match: "packages=|\\[project\\]"
+        negative_signals: ["manage.py", "app.py", "main.py"]
+      # Go module 无 main 入口
+      - file_exists: ["go.mod"]
+        negative_signals: ["main.go", "cmd/"]
+    references_dir: sdk/
+
+  embedded:
+    label: 嵌入式
+    requires_role_disambiguation: false
+    architecture_md_hints:
+      keywords:
+        - FreeRTOS
+        - Zephyr
+        - RT-Thread
+        - ESP-IDF
+        - PlatformIO
+        - Arduino
+        - STM32
+        - HAL
+        - BSP
+      categories:
+        - RTOS
+        - MCU
+        - 外设驱动
+        - 中断 / DMA
+      directory_signals:
+        - drivers/
+        - hal/
+        - bsp/
+    detect:
+      - file_exists: ["platformio.ini"]
+      - file_exists: ["sdkconfig", "sdkconfig.defaults"]
+      - file_exists: ["prj.conf"]
+      - file_exists: ["Kconfig"]
+        contents_match: "FreeRTOS|RT-Thread|menuconfig"
+    references_dir: embedded/
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 角色消歧选项（后台信号命中时使用）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+role_disambiguation:
+  backend:
+    options:
+      - id: backend
+        label: 真后台服务（领域逻辑、数据存储、对外 API/RPC）
+        loads: backend/
+      - id: bff
+        label: BFF / 中间层（为前端聚合裁剪，逻辑归属前端）
+        loads: frontend/
+        tag: bff
+      - id: backend_and_bff
+        label: 同时承担两者 → 生成两份 TRD
+        loads: backend/
+        tag: backend+bff
+
+  sdk:
+    options:
+      - id: sdk
+        label: 纯 SDK / 库（对外提供 API，无 UI 和应用入口）
+        loads: sdk/
+      - id: sdk_with_demo
+        label: SDK + 示例/Playground 应用（SDK 为主，demo 仅辅助验证）
+        loads: sdk/
+        tag: sdk+demo
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 单包多栈兜底选项
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+multi_stack_fallback:
+  options:
+    - id: frontend
+      label: Web 前端
+      loads: frontend/
+    - id: android
+      label: Android 原生（Kotlin/Java）
+      loads: android/
+    - id: backend
+      label: 后台服务
+      loads: backend/
+    - id: sdk
+      label: SDK / 库 / 工具包
+      loads: sdk/
+    - id: embedded
+      label: 嵌入式
+      loads: embedded/
+    - id: bff
+      label: BFF / 中间层
+      loads: frontend/
+      tag: bff
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Monorepo TRD 生成模式选项（Step 4 §4.3 使用）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+monorepo_trd_modes:
+  - id: all_at_once
+    label: 全部并行生成
+  - id: focus_one_first
+    label: 聚焦优先（只生成 1 份，其余入 pending）
+  - id: phased_with_confirm
+    label: 分批确认（每完成一份询问是否继续）
+  - id: custom_subset
+    label: 自定义子集（二次多选）
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Monorepo 配置
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+monorepo_config:
+  trd_filename_pattern: "trds/{subpackage_name}-{feature_name}-trd.md"
+  pending_state_file: "changes/active-change/{change_name}/monorepo-pending-trds.txt"
+  persist_to: seedpacespec/role.yaml
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 全栈共用必读资源
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+common:
+  mandatory:
+    - file: examples/high-quality-trd.md
+      label: 黄金样本（质量锚点）
+      note: 示例为前端场景，非前端项目只对标写作深度和结构，术语须替换为本栈概念

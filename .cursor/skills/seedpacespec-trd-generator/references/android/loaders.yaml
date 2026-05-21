@@ -1,0 +1,33 @@
+# =============================================================================
+# Android 原生 — 条件加载配置
+# -----------------------------------------------------------------------------
+# 适用：Android 原生项目（Kotlin/Java、Jetpack Compose/XML、MVVM/MVP）
+# 不适用：Flutter 项目（归属 frontend）、React Native 项目（归属 frontend）
+# =============================================================================
+
+mandatory:
+  - file: ../../examples/high-quality-trd.md
+    label: 黄金样本（质量锚点）
+    reason: 对标写作深度和结构，术语须替换为 Android 概念（ViewModel/Repository/UseCase/Activity/Fragment 等）
+
+# 展开维度菜单（供 Q-depth 评估时展示）
+depth_dimensions:
+  - 页面/屏幕结构（Activity/Fragment/Composable 层级）
+  - UI 组件设计（Compose 组件树 / XML Layout）
+  - 状态管理归属（ViewModel/StateFlow/LiveData/UiState）
+  - 导航流与路由设计（Navigation Component/DeepLink）
+  - 领域层（UseCase/Interactor）
+  - 数据层（Repository/DataSource/DAO/Retrofit）
+  - 依赖注入（Hilt/Dagger/Koin）
+  - 生命周期管理（Lifecycle-aware components）
+  - 需求实现链路
+
+# 条件加载项（待补充 Android 专属 guide 后启用）
+conditions: []
+
+fallback_note: >
+  当前 Android 原生尚无专属 guide 文件。
+  生成 §4 时须 Read references/stack-thinking-skeleton.md 中「移动端」或「Android」相关章节，
+  按其核心设计问题和设计意图必答题展开。
+  关键设计维度：Activity/Fragment 生命周期管理、ViewModel 职责边界、
+  Repository 模式、协程/Flow 异步处理、依赖注入配置。

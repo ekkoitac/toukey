@@ -1,0 +1,19 @@
+layout: single-package
+tech_stack: electron-typescript
+role: desktop-application
+loads: frontend
+
+# 项目说明
+project:
+  name: touchpad-keymap-layer
+  type: electron-desktop-app
+  platform: macos
+
+# 检测依据
+detection:
+  - source: user_specified
+    stack: Electron + TypeScript + Vite
+    reason: 用户在设计阶段明确指定技术栈
+
+# 子包（单包项目无子包）
+subpackages: []

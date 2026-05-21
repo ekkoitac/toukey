@@ -1,0 +1,29 @@
+{
+  "name": "touchpad-keymap-layer",
+  "version": "1.0.0",
+  "description": "macOS Electron app for touchpad-based keymap layer switching",
+  "main": "dist/main/index.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "build:native": "node-gyp rebuild -C src/native",
+    "build:native:dev": "npm run build:native -- --debug",
+    "postinstall": "npm run build:native"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "electron": "^28.0.0",
+    "electron-vite": "^2.0.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0"
+  },
+  "dependencies": {
+    "electron-log": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,76 @@
+# =============================================================================
+# 前端 / 客户端技术栈 —— 条件加载表
+# -----------------------------------------------------------------------------
+# 本文件由 SKILL.md 在 Step 8「条件加载评估」中读取。
+# AI 必须:
+#   1. 始终读取 mandatory 列表里的所有文件(全栈共用 + 本技术栈共用)
+#   2. 对 conditions 中的每条逐项判定;命中的把对应 file 读进上下文
+#   3. 输出"条件评估表",每条列出: id / label / 命中? / 判定依据 / 已读取?
+# 拓展条件:在 conditions 下追加一项,无需改 SKILL.md。
+# =============================================================================
+
+# 所有路径相对于本 loaders.yaml 所在目录(references/frontend/)
+# 跨目录引用用相对路径(如 ../../examples/)
+mandatory:
+  - file: ../../examples/high-quality-trd.md
+    label: 黄金样本(质量锚点)
+    reason: 写作风格、设计意图深度、伪代码+白话解读的标杆,任何一份前端 TRD 都不得低于该样本的厚度
+
+# ---------- Full 级别展开维度(Q-depth 评估表中供用户勾选) ----------
+depth_dimensions:
+  - id: component_tree
+    label: 组件树总览
+    applicable_when: 有新增或重组的 UI 组件
+  - id: component_design
+    label: 逐组件设计
+    applicable_when: 页面/容器组件有新增或职责变更
+  - id: state_ownership
+    label: 状态归属
+    applicable_when: 新增关键状态或状态归属方式变更
+  - id: logic_unit
+    label: 逻辑单元设计
+    applicable_when: 新增或重构 Hook/Service/纯函数
+  - id: interaction_flow
+    label: 交互流
+    applicable_when: 复杂异步流程、多步骤交互
+  - id: requirement_chain
+    label: 需求实现链路
+    applicable_when: 组件 → 逻辑 → 数据的完整链路
+
+conditions:
+
+  - id: L1
+    label: 涉及 UI 层或逻辑层?
+    file: ui-component-guide.md
+    section: 全文
+    quick_check: |
+      Step 2 的改动方案中,是否有任一文件属于:
+        - Page / View / Component / Widget 层
+        - Hooks / Utils / Service 层
+      有 → 命中。仅涉及 Model / Repository / Config 层 → 不命中。
+    purpose: 提供组件设计、状态归属决策树、逻辑归类的写法标杆
+
+  - id: L2
+    label: 规模大?(≥5 个 R 或 ≥3 个架构层)
+    file: advanced-scenarios.md
+    section: §分块生成
+    quick_check: |
+      数本次纳入的 R 数量和涉及的架构层数。
+      R≥5 或 层≥3 → 命中。
+    purpose: 提供分块流程和概要摘要,避免一次性输出超长 TRD
+
+  - id: L3
+    label: 多模板 / 多变体?
+    file: advanced-scenarios.md
+    section: §多模板
+    quick_check: |
+      纳入的 R 中是否存在 ≥2 种模板/类型/变体?两种触发路径(任一即命中):
+        - 多 R 模板组: 多个 R 属于同一功能域但各自代表不同模板
+        - 单 R 内多模板: 某个 R 描述中列举了 ≥2 种呈现形态
+    purpose: 模板组织结构 + 多模板分批确认流程
+
+# ---------- 兜底说明 ----------
+# 评估表中所有 conditions 全部不命中(除 mandatory 外) → 不读上述 references。
+# 但黄金样本仍然必读,质量门槛不变。
+fallback_note: |
+  L 全未命中 = 简单变更,只需黄金样本对齐质量。仍要避免目录式 TRD。

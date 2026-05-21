@@ -1,0 +1,28 @@
+schema: spec-driven
+
+# 文档漂移检测：AI 修改源码时自动检测是否命中活跃变更的 TRD/design 范围
+# 命中时在回复末尾追加提醒，建议同步更新文档
+driftDetection:
+  enabled: false          # true 开启漂移检测（默认 false）
+  # activeChange: ""      # 指定当前聚焦的变更名；未配置时按最近修改时间自动选择
+
+# Git pre-push：push 前在终端交互式询问是否执行漂移检测 / 缺陷检测
+# 选 y 则中断推送，提示先在 Cursor/Claude 中执行检查后重新 push
+# 自动排除 .cursor/ .claude/ 路径的文件，不计入变更统计
+gitHooks:
+  prePush:
+    enabled: true         # false 则 pre-push 钩子直接放行，不做任何询问
+
+# 插件配置：可覆盖或扩展内置 skill 的行为
+# plugins:
+#   override:
+#     # apply: path/to/custom-apply.md        # 完全替换 apply skill
+#     # test-plan: path/to/custom-test.md     # 完全替换 test-plan skill
+#   slots:
+#     - skill: apply
+#       slot: ui_render
+#       run: path/to/custom-ui-render.md
+
+# 反馈记忆系统：从确认循环中提炼用户偏好，供后续生成参考
+memory:
+  enabled: true           # false 则不收集也不读取

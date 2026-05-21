@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Touchpad Keymap Layer - 设置</title>
+  <link rel="stylesheet" href="./settings/styles.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>⌨️ 触摸板按键层</h1>
+      <p class="subtitle">单指放在触摸板上时，激活自定义按键映射</p>
+    </header>
+
+    <main class="content">
+      <!-- 映射规则列表 -->
+      <section class="section">
+        <div class="section-header">
+          <h2>按键映射</h2>
+          <button id="btn-reset" class="btn btn-secondary">恢复默认</button>
+        </div>
+        
+        <div id="mapping-list" class="mapping-list">
+          <!-- 动态生成映射列表 -->
+        </div>
+        
+        <button id="btn-add" class="btn btn-primary">+ 添加映射</button>
+      </section>
+
+      <!-- 添加/编辑表单（默认隐藏） -->
+      <section id="edit-section" class="section edit-section hidden">
+        <h3>编辑映射</h3>
+        
+        <div class="form-group">
+          <label>源按键（按下）</label>
+          <input type="text" id="input-from" class="input-key" placeholder="点击输入按键..." readonly>
+          <span class="hint">点击输入框并按任意键</span>
+        </div>
+        
+        <div class="form-group">
+          <label>目标按键（输出）</label>
+          <select id="select-to" class="select">
+            <option value="up">↑ 上方向键</option>
+            <option value="down">↓ 下方向键</option>
+            <option value="left">← 左方向键</option>
+            <option value="right">→ 右方向键</option>
+            <option value="home">Home 行首</option>
+            <option value="end">End 行尾</option>
+            <option value="pageup">Page Up</option>
+            <option value="pagedown">Page Down</option>
+            <option value="escape">Escape</option>
+            <option value="delete">Delete</option>
+          </select>
+        </div>
+        
+        <div class="form-actions">
+          <button id="btn-save" class="btn btn-primary">保存</button>
+          <button id="btn-cancel" class="btn btn-secondary">取消</button>
+        </div>
+      </section>
+
+      <!-- 状态信息 -->
+      <section class="section section-info">
+        <h2>关于</h2>
+        <p>版本: 1.0.0</p>
+        <p>当前状态: <span id="layer-status">等待触摸板...</span></p>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="./settings/index.js"></script>
+</body>
+</html>
