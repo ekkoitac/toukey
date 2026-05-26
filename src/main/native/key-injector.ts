@@ -9,7 +9,7 @@ import path from 'path'
 let nativeModule: any
 
 try {
-  const nativePath = path.join(__dirname, '../../../native/build/Release/keyinjector.node')
+  const nativePath = path.join(__dirname, '../../src/native/build/Release/keyinjector.node')
   nativeModule = require(nativePath)
 } catch (error) {
   console.warn('Failed to load native key injector module:', error)

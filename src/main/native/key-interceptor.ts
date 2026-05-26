@@ -9,7 +9,7 @@ import path from 'path'
 let nativeModule: any
 
 try {
-  const nativePath = path.join(__dirname, '../../../native/build/Release/keyinterceptor.node')
+  const nativePath = path.join(__dirname, '../../src/native/build/Release/keyinterceptor.node')
   nativeModule = require(nativePath)
 } catch (error) {
   console.warn('Failed to load native key interceptor module:', error)
@@ -77,15 +77,22 @@ export class KeyInterceptor {
   }
 
   /**
-   * 设置拦截过滤器
-   * 返回 true = 拦截（不传递到系统）
-   * 返回 false = 放行
+   * 设置拦截过滤器（保留兼容；实际拦截由 updateInterceptState 驱动）
    */
   setInterceptFilter(filter: InterceptFilter): void {
     this.filterCallback = filter
-    
+
     if (this.native) {
       this.native.setInterceptFilter(filter)
+    }
+  }
+
+  /**
+   * 同步拦截状态到原生层（layer2 激活 + 映射键码列表）
+   */
+  updateInterceptState(active: boolean, keyCodes: number[]): void {
+    if (this.native?.updateInterceptState) {
+      this.native.updateInterceptState(active, keyCodes)
     }
   }
 }

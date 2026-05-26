@@ -34,12 +34,18 @@ export class KeymapEngine {
       // 设置拦截器回调
       this.setupInterceptor()
 
+      // 层状态变化时同步原生拦截条件
+      this.stateMachine.onStateChange(() => {
+        this.syncInterceptState()
+      })
+
       // 启动拦截器
       const success = this.keyInterceptor.start()
       if (!success) {
         logger.warn('Key interceptor failed to start, may need Accessibility permission')
       } else {
         this.enabled = true
+        this.syncInterceptState()
         logger.info('Keymap engine initialized and started')
       }
 
@@ -67,6 +73,7 @@ export class KeymapEngine {
     }
     
     logger.info(`Loaded ${this.rules.size} key mappings`)
+    this.syncInterceptState()
   }
 
   /**
@@ -74,6 +81,7 @@ export class KeymapEngine {
    */
   enable(): void {
     this.enabled = true
+    this.syncInterceptState()
     logger.info('Keymap engine enabled')
   }
 
@@ -82,6 +90,7 @@ export class KeymapEngine {
    */
   disable(): void {
     this.enabled = false
+    this.syncInterceptState()
     logger.info('Keymap engine disabled')
   }
 
@@ -102,28 +111,32 @@ export class KeymapEngine {
    * 设置拦截器
    */
   private setupInterceptor(): void {
-    // 设置拦截过滤器
-    this.keyInterceptor.setInterceptFilter((event: KeyEvent) => {
-      if (!this.enabled) {
-        return false
-      }
-
-      // 只在 Layer2 时拦截
-      const currentLayer = this.stateMachine.getCurrentLayer()
-      if (currentLayer !== 'layer2') {
-        return false
-      }
-
-      // 检查该键是否有映射规则
-      const keyChar = this.keyCodeToChar(event.keyCode)
-      return this.rules.has(keyChar)
-    })
-
-    // 监听按键按下事件
+    // 监听按键按下事件（拦截逻辑在原生层，由 syncInterceptState 同步）
     this.keyInterceptor.on('keydown', (event: KeyEvent) => {
       const keyChar = this.keyCodeToChar(event.keyCode)
       this.executeMapping(keyChar)
     })
+  }
+
+  /**
+   * 将 layer2 状态与映射键码同步到原生拦截器
+   */
+  private syncInterceptState(): void {
+    if (!this.keyInterceptor) {
+      return
+    }
+
+    const active = this.enabled && this.stateMachine.getCurrentLayer() === 'layer2'
+    const keyCodes: number[] = []
+
+    for (const fromKey of this.rules.keys()) {
+      const code = MACOS_KEY_CODES[fromKey]
+      if (code !== undefined) {
+        keyCodes.push(code)
+      }
+    }
+
+    this.keyInterceptor.updateInterceptState(active, keyCodes)
   }
 
   /**

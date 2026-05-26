@@ -11,7 +11,7 @@ let nativeModule: any
 try {
   // 开发环境：从 build/Release 加载
   // 生产环境：从打包后的位置加载
-  const nativePath = path.join(__dirname, '../../../native/build/Release/touchpad.node')
+  const nativePath = path.join(__dirname, '../../src/native/build/Release/touchpad.node')
   nativeModule = require(nativePath)
 } catch (error) {
   console.warn('Failed to load native touchpad module:', error)

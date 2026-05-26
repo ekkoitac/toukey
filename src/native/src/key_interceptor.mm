@@ -2,6 +2,9 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <dispatch/dispatch.h>
+#include <mutex>
+#include <unordered_set>
+#include <chrono>
 #include <iostream>
 
 class KeyInterceptor : public Napi::ObjectWrap<KeyInterceptor> {
@@ -12,6 +15,7 @@ public:
       InstanceMethod("stop", &KeyInterceptor::Stop),
       InstanceMethod("on", &KeyInterceptor::On),
       InstanceMethod("setInterceptFilter", &KeyInterceptor::SetInterceptFilter),
+      InstanceMethod("updateInterceptState", &KeyInterceptor::UpdateInterceptState),
     });
 
     constructor = Napi::Persistent(func);
@@ -26,7 +30,8 @@ public:
       eventTap(nullptr),
       runLoopSource(nullptr),
       eventQueue(nullptr),
-      isRunning(false) {}
+      isRunning(false),
+      interceptActive(false) {}
 
   ~KeyInterceptor() {
     StopMonitoring();
@@ -42,15 +47,14 @@ private:
       return Napi::Boolean::New(env, true);
     }
 
-    // 创建事件队列
     eventQueue = dispatch_queue_create("keyinterceptor.queue", DISPATCH_QUEUE_SERIAL);
 
-    // 异步启动 CGEventTap
     __block bool success = false;
-    dispatch_sync(eventQueue, ^{
-      // 创建 CGEventTap
+    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+
+    dispatch_async(eventQueue, ^{
       CGEventMask eventMask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp);
-      
+
       eventTap = CGEventTapCreate(
         kCGSessionEventTap,
         kCGHeadInsertEventTap,
@@ -62,21 +66,23 @@ private:
 
       if (!eventTap) {
         std::cerr << "Failed to create event tap - check Accessibility permissions" << std::endl;
+        dispatch_semaphore_signal(sem);
         return;
       }
 
-      // 创建 run loop source
       runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0);
       CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, kCFRunLoopCommonModes);
       CGEventTapEnable(eventTap, true);
-      
+
       success = true;
-      
-      // 启动 run loop
+      isRunning = true;
+      dispatch_semaphore_signal(sem);
+
       CFRunLoopRun();
     });
 
-    isRunning = success;
+    dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+
     return Napi::Boolean::New(env, success);
   }
 
@@ -116,22 +122,55 @@ private:
     filterCallback = Napi::Persistent(info[0].As<Napi::Function>());
   }
 
-  void StopMonitoring() {
-    if (isRunning) {
-      if (eventTap) {
-        CGEventTapEnable(eventTap, false);
-      }
-      if (runLoopSource) {
-        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, kCFRunLoopCommonModes);
-        CFRelease(runLoopSource);
-        runLoopSource = nullptr;
-      }
-      if (eventTap) {
-        CFRelease(eventTap);
-        eventTap = nullptr;
-      }
-      isRunning = false;
+  void UpdateInterceptState(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2 || !info[0].IsBoolean() || !info[1].IsArray()) {
+      Napi::TypeError::New(env, "Expected (active, keyCodes[])").ThrowAsJavaScriptException();
+      return;
     }
+
+    const bool active = info[0].As<Napi::Boolean>().Value();
+    Napi::Array keyCodes = info[1].As<Napi::Array>();
+
+    std::unordered_set<int> codes;
+    codes.reserve(keyCodes.Length());
+    for (uint32_t i = 0; i < keyCodes.Length(); i++) {
+      Napi::Value value = keyCodes.Get(i);
+      if (value.IsNumber()) {
+        codes.insert(value.As<Napi::Number>().Int32Value());
+      }
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(stateMutex_);
+      interceptActive = active;
+      mappedKeyCodes = std::move(codes);
+    }
+  }
+
+  void StopMonitoring() {
+    if (eventQueue && isRunning) {
+      dispatch_sync(eventQueue, ^{
+        if (eventTap) {
+          CGEventTapEnable(eventTap, false);
+        }
+        if (runLoopSource) {
+          CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, kCFRunLoopCommonModes);
+          CFRelease(runLoopSource);
+          runLoopSource = nullptr;
+        }
+        if (eventTap) {
+          CFMachPortInvalidate(eventTap);
+          CFRelease(eventTap);
+          eventTap = nullptr;
+        }
+        CFRunLoopStop(CFRunLoopGetCurrent());
+      });
+    }
+
+    isRunning = false;
+    eventQueue = nullptr;
 
     if (tsfn) {
       tsfn.Release();
@@ -139,38 +178,39 @@ private:
     }
   }
 
-  // 事件回调
   static CGEventRef EventTapCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void* refcon) {
     KeyInterceptor* self = static_cast<KeyInterceptor*>(refcon);
-    
-    // 获取按键码
-    int64_t keyCode = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
-    
-    // 转换为 JS 事件对象
-    bool isDown = (type == kCGEventKeyDown);
-    
-    // 简化的过滤逻辑
-    // 实际应该调用 JS filter 回调
-    bool shouldIntercept = false;
-    
-    // 这里简化处理：如果有 filter 回调，应该异步询问 JS
-    // 但为了性能，我们在原生层做快速预过滤
-    
-    // 检查是否需要拦截
-    if (self->ShouldIntercept((int)keyCode, isDown)) {
-      // 拦截：通知 JS 并阻止传播
-      self->EmitKeyEvent((int)keyCode, isDown);
-      return NULL;  // 阻止事件传播
+
+    if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
+      if (self->eventTap) {
+        CGEventTapEnable(self->eventTap, true);
+      }
+      return event;
     }
-    
-    return event;  // 放行
+
+    if (type != kCGEventKeyDown && type != kCGEventKeyUp) {
+      return event;
+    }
+
+    int keyCode = static_cast<int>(CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode));
+    bool isDown = (type == kCGEventKeyDown);
+
+    if (self->ShouldIntercept(keyCode, isDown)) {
+      if (isDown) {
+        self->EmitKeyEvent(keyCode, true);
+      }
+      return NULL;
+    }
+
+    return event;
   }
 
   bool ShouldIntercept(int keyCode, bool isDown) {
-    // 简化的拦截判断
-    // 实际应该调用 JS 层 filter 回调
-    // 这里先实现一个默认的测试逻辑
-    return false;  // 默认放行，等待 JS 层配置
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    if (!interceptActive) {
+      return false;
+    }
+    return mappedKeyCodes.find(keyCode) != mappedKeyCodes.end();
   }
 
   void EmitKeyEvent(int keyCode, bool isDown) {
@@ -179,9 +219,13 @@ private:
     tsfn.NonBlockingCall([keyCode, isDown](Napi::Env env, Napi::Function jsCallback) {
       Napi::Object event = Napi::Object::New(env);
       event.Set("keyCode", keyCode);
-      event.Set("keyChar", "");  // 需要转换为字符
+      event.Set("keyChar", "");
       event.Set("isDown", isDown);
-      event.Set("timestamp", Napi::Date::New(env, std::chrono::system_clock::now().time_since_epoch().count() / 1000000));
+      event.Set("timestamp", Napi::Number::New(env, static_cast<double>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch()
+        ).count()
+      )));
 
       jsCallback.Call({event});
     });
@@ -191,13 +235,15 @@ private:
   CFRunLoopSourceRef runLoopSource;
   dispatch_queue_t eventQueue;
   bool isRunning;
+  bool interceptActive;
+  std::unordered_set<int> mappedKeyCodes;
+  std::mutex stateMutex_;
   Napi::ThreadSafeFunction tsfn;
   Napi::FunctionReference filterCallback;
 };
 
 Napi::FunctionReference KeyInterceptor::constructor;
 
-// 初始化模块
 Napi::Object InitInterceptor(Napi::Env env, Napi::Object exports) {
   KeyInterceptor::Init(env, exports);
   return exports;

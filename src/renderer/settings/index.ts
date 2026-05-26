@@ -1,4 +1,4 @@
-import { AppConfig, KeyMapping } from '../../common/types/mapping'
+import { AppConfig, KeyMapping, LayerState } from '../../common/types/mapping'
 
 /**
  * 配置界面控制器
@@ -25,6 +25,7 @@ class SettingsController {
     this.bindEvents()
     this.loadConfig()
     this.listenConfigUpdates()
+    this.listenLayerStateUpdates()
   }
 
   /**
@@ -77,6 +78,27 @@ class SettingsController {
       this.config = config
       this.renderMappingList()
     })
+  }
+
+  /**
+   * 监听层状态更新
+   */
+  private async listenLayerStateUpdates(): Promise<void> {
+    try {
+      const state = await window.api.getLayerState()
+      this.updateLayerStatus(state)
+    } catch (error) {
+      console.error('Failed to load layer state:', error)
+    }
+
+    window.api.onLayerStateUpdate((state) => {
+      this.updateLayerStatus(state)
+    })
+  }
+
+  private updateLayerStatus(state: LayerState): void {
+    this.elements.layerStatus.textContent =
+      state === 'layer2' ? '自定义层已激活' : '正常层'
   }
 
   /**

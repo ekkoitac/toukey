@@ -45,6 +45,7 @@ async function initializeApp() {
 
   // 3. 初始化触摸板状态机
   stateMachine = new TouchpadStateMachine()
+  await stateMachine.initialize()
   logger.info('State machine initialized')
 
   // 4. 初始化按键映射引擎（需要原生模块）
@@ -86,8 +87,12 @@ async function initializeApp() {
 
 // 显示配置窗口
 function showSettingsWindow() {
+  if (!configManager || !keymapEngine || !stateMachine) {
+    logger.warn('Settings window requested before app initialization completed')
+    return
+  }
   if (!settingsWindow) {
-    settingsWindow = new SettingsWindow(configManager!, keymapEngine!)
+    settingsWindow = new SettingsWindow(configManager, keymapEngine, stateMachine)
   }
   settingsWindow.show()
   logger.info('Settings window shown')

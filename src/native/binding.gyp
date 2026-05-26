@@ -8,7 +8,7 @@
       ],
       "include_dirs": [
         "include",
-        "<!@(node -e \"require('node-addon-api').include\")"
+        "<!@(node -p \"require('node-addon-api').include\")"
       ],
       "defines": [
         "NAPI_DISABLE_CPP_EXCEPTIONS"
@@ -43,7 +43,7 @@
       ],
       "include_dirs": [
         "include",
-        "<!@(node -e \"require('node-addon-api').include\")"
+        "<!@(node -p \"require('node-addon-api').include\")"
       ],
       "defines": [
         "NAPI_DISABLE_CPP_EXCEPTIONS"
@@ -75,7 +75,7 @@
       ],
       "include_dirs": [
         "include",
-        "<!@(node -e \"require('node-addon-api').include\")"
+        "<!@(node -p \"require('node-addon-api').include\")"
       ],
       "defines": [
         "NAPI_DISABLE_CPP_EXCEPTIONS"

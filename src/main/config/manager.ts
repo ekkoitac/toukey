@@ -14,6 +14,7 @@ export class ConfigManager {
   private currentConfig: AppConfig = DEFAULT_CONFIG
   private watchers: Set<(config: AppConfig) => void> = new Set()
   private fileWatcher: fs.FileWatcher | null = null
+  private isWriting: boolean = false
 
   /**
    * 初始化配置管理器
@@ -66,15 +67,23 @@ export class ConfigManager {
       throw new Error('Config validation failed')
     }
 
-    // 写入文件
-    await fs.writeFile(
-      this.configPath,
-      JSON.stringify(config, null, 2),
-      'utf-8'
-    )
+    this.isWriting = true
+    try {
+      // 写入文件
+      await fs.writeFile(
+        this.configPath,
+        JSON.stringify(config, null, 2),
+        'utf-8'
+      )
 
-    this.currentConfig = config
-    logger.info('Config saved successfully')
+      this.currentConfig = config
+      logger.info('Config saved successfully')
+    } finally {
+      // 延迟重置 writing 状态以确保避开文件系统 change 事件的延迟触发
+      setTimeout(() => {
+        this.isWriting = false
+      }, 100)
+    }
   }
 
   /**
@@ -206,6 +215,10 @@ export class ConfigManager {
     try {
       this.fileWatcher = fs.watch(this.configPath, (eventType) => {
         if (eventType === 'change') {
+          if (this.isWriting) {
+            logger.debug('Config file changed by self write, ignoring reload')
+            return
+          }
           logger.info('Config file changed, reloading...')
           this.loadConfig().catch(err => {
             logger.error('Config reload failed:', err)

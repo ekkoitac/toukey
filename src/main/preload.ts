@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS, AppConfig } from '../common/types/mapping'
+import { IPC_CHANNELS, AppConfig, LayerState } from '../common/types/mapping'
 
 /**
  * 暴露给渲染进程的 API
@@ -26,6 +26,15 @@ const settingsAPI = {
   // 移除监听器
   removeConfigUpdate: (callback: (config: AppConfig) => void): void => {
     ipcRenderer.removeListener(IPC_CHANNELS.CONFIG_UPDATED, callback)
+  },
+
+  // 获取当前层状态
+  getLayerState: (): Promise<LayerState> =>
+    ipcRenderer.invoke(IPC_CHANNELS.LAYER_STATE_GET),
+
+  // 监听层状态变更
+  onLayerStateUpdate: (callback: (state: LayerState) => void): void => {
+    ipcRenderer.on(IPC_CHANNELS.LAYER_STATE_UPDATED, (_, state) => callback(state))
   }
 }
 

@@ -1,10 +1,53 @@
 #include <napi.h>
-#include <IOKit/hid/IOHIDManager.h>
-#include <IOKit/hid/IOHIDKeys.h>
 #include <CoreFoundation/CoreFoundation.h>
+#include <dlfcn.h>
 #include <iostream>
+#include <vector>
+#include <chrono>
 
-// 触摸板监控类
+// MultitouchSupport 类型定义
+typedef struct {
+  float x;
+  float y;
+} MTPoint;
+
+typedef struct {
+  float positionX;
+  float positionY;
+} MTVector;
+
+typedef struct {
+  int frame;
+  double timestamp;
+  int identifier;
+  int state;
+  int fingerIdentity;
+  int size;
+  float pressure;
+  MTPoint position;
+  MTVector velocity;
+  float orientation;
+  unsigned int active;
+} MTContact;
+
+typedef void* MTDeviceRef;
+typedef int (*MTContactCallbackFunction)(
+  MTDeviceRef device,
+  MTContact* contacts,
+  int numContacts,
+  double timestamp,
+  int frame
+);
+
+typedef MTDeviceRef (*MTDeviceCreateDefaultFn)();
+typedef CFArrayRef (*MTDeviceCreateListFn)();
+typedef void (*MTRegisterContactFrameCallbackFn)(MTDeviceRef, MTContactCallbackFunction, void*);
+typedef void (*MTDeviceStartFn)(MTDeviceRef, int);
+typedef void (*MTDeviceStopFn)(MTDeviceRef);
+
+class TouchpadMonitor;
+extern TouchpadMonitor* globalInstance;
+
 class TouchpadMonitor : public Napi::ObjectWrap<TouchpadMonitor> {
 public:
   static Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -24,16 +67,65 @@ public:
 
   TouchpadMonitor(const Napi::CallbackInfo& info) 
     : Napi::ObjectWrap<TouchpadMonitor>(info), 
-      hidManager(nullptr), 
       isRunning(false),
-      previousFingerCount(0) {}
+      previousFingerCount(0),
+      multitouchSupportHandle(nullptr) {}
 
   ~TouchpadMonitor() {
     StopMonitoring();
   }
 
+  void ProcessContacts(MTContact* contacts, int numContacts) {
+    // 如果之前手指数量为 0，当前手指数量大于 0，触发 touch-start 并模拟单指以满足状态机过滤
+    if (previousFingerCount == 0 && numContacts > 0) {
+      EmitTouchEvent("touch-start", 1);
+    }
+    // 如果之前手指数量大于 0，当前手指数量为 0，触发 touch-end
+    else if (previousFingerCount > 0 && numContacts == 0) {
+      EmitTouchEvent("touch-end", 0);
+    }
+    previousFingerCount = numContacts;
+  }
+
 private:
   static Napi::FunctionReference constructor;
+  bool isRunning;
+  int previousFingerCount;
+  Napi::ThreadSafeFunction tsfn;
+  void* multitouchSupportHandle;
+  std::vector<MTDeviceRef> activeDevices;
+
+  // 动态库函数指针
+  MTDeviceCreateDefaultFn MTDeviceCreateDefault = nullptr;
+  MTDeviceCreateListFn MTDeviceCreateList = nullptr;
+  MTRegisterContactFrameCallbackFn MTRegisterContactFrameCallback = nullptr;
+  MTDeviceStartFn MTDeviceStart = nullptr;
+  MTDeviceStopFn MTDeviceStop = nullptr;
+
+  bool LoadMultitouchSupport() {
+    if (multitouchSupportHandle) return true;
+
+    multitouchSupportHandle = dlopen("/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport", RTLD_LAZY);
+    if (!multitouchSupportHandle) {
+      std::cerr << "Failed to load MultitouchSupport: " << dlerror() << std::endl;
+      return false;
+    }
+
+    MTDeviceCreateDefault = (MTDeviceCreateDefaultFn)dlsym(multitouchSupportHandle, "MTDeviceCreateDefault");
+    MTDeviceCreateList = (MTDeviceCreateListFn)dlsym(multitouchSupportHandle, "MTDeviceCreateList");
+    MTRegisterContactFrameCallback = (MTRegisterContactFrameCallbackFn)dlsym(multitouchSupportHandle, "MTRegisterContactFrameCallback");
+    MTDeviceStart = (MTDeviceStartFn)dlsym(multitouchSupportHandle, "MTDeviceStart");
+    MTDeviceStop = (MTDeviceStopFn)dlsym(multitouchSupportHandle, "MTDeviceStop");
+
+    if (!MTDeviceCreateDefault || !MTDeviceCreateList || !MTRegisterContactFrameCallback || !MTDeviceStart || !MTDeviceStop) {
+      std::cerr << "Failed to find all required MultitouchSupport symbols" << std::endl;
+      dlclose(multitouchSupportHandle);
+      multitouchSupportHandle = nullptr;
+      return false;
+    }
+
+    return true;
+  }
 
   void Start(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -42,41 +134,40 @@ private:
       return;
     }
 
-    // 创建 HID 管理器
-    hidManager = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
-    if (!hidManager) {
-      Napi::Error::New(env, "Failed to create HID manager").ThrowAsJavaScriptException();
+    if (!LoadMultitouchSupport()) {
+      Napi::Error::New(env, "Failed to load MultitouchSupport private framework").ThrowAsJavaScriptException();
       return;
     }
 
-    // 设置设备匹配规则（触摸板）
-    CFMutableDictionaryRef match = CFDictionaryCreateMutable(
-      kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks
-    );
+    // 设置全局实例以供静态回调函数使用
+    globalInstance = this;
 
-    int usagePage = kHIDPage_GenericDesktop;
-    int usage = kHIDUsage_GD_Mouse;  // 触摸板通常作为鼠标设备
-    
-    CFDictionarySetValue(match, CFSTR(kIOHIDDeviceUsagePageKey), 
-      CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &usagePage));
-    CFDictionarySetValue(match, CFSTR(kIOHIDDeviceUsageKey),
-      CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &usage));
-
-    IOHIDManagerSetDeviceMatching(hidManager, match);
-    CFRelease(match);
-
-    // 设置回调
-    IOHIDManagerRegisterInputValueCallback(hidManager, HandleInputValue, this);
-    IOHIDManagerScheduleWithRunLoop(hidManager, CFRunLoopGetMain(), kCFRunLoopDefaultMode);
-    
-    IOReturn result = IOHIDManagerOpen(hidManager, kIOHIDOptionsTypeNone);
-    if (result != kIOReturnSuccess) {
-      Napi::Error::New(env, "Failed to open HID manager").ThrowAsJavaScriptException();
-      return;
+    CFArrayRef devices = MTDeviceCreateList();
+    if (!devices) {
+      MTDeviceRef defaultDevice = MTDeviceCreateDefault();
+      if (defaultDevice) {
+        MTRegisterContactFrameCallback(defaultDevice, HandleContactFrame, nullptr);
+        MTDeviceStart(defaultDevice, 0);
+        activeDevices.push_back(defaultDevice);
+      } else {
+        Napi::Error::New(env, "No multitouch devices found").ThrowAsJavaScriptException();
+        return;
+      }
+    } else {
+      CFIndex count = CFArrayGetCount(devices);
+      for (CFIndex i = 0; i < count; ++i) {
+        MTDeviceRef device = (MTDeviceRef)CFArrayGetValueAtIndex(devices, i);
+        if (device) {
+          MTRegisterContactFrameCallback(device, HandleContactFrame, nullptr);
+          MTDeviceStart(device, 0);
+          activeDevices.push_back(device);
+        }
+      }
+      CFRelease(devices);
     }
 
     isRunning = true;
-    std::cout << "Touchpad monitoring started" << std::endl;
+    std::cout << "Touchpad monitoring started using MultitouchSupport" << std::endl;
   }
 
   void Stop(const Napi::CallbackInfo& info) {
@@ -94,7 +185,6 @@ private:
     std::string event = info[0].As<Napi::String>().Utf8Value();
     
     if (event == "touch") {
-      // 创建线程安全函数
       tsfn = Napi::ThreadSafeFunction::New(
         env,
         info[1].As<Napi::Function>(),
@@ -112,57 +202,32 @@ private:
     }
   }
 
-  // 停止监控
   void StopMonitoring() {
-    if (hidManager && isRunning) {
-      IOHIDManagerClose(hidManager, kIOHIDOptionsTypeNone);
-      IOHIDManagerUnscheduleFromRunLoop(hidManager, CFRunLoopGetMain(), kCFRunLoopDefaultMode);
-      CFRelease(hidManager);
-      hidManager = nullptr;
-    }
-    isRunning = false;
-    std::cout << "Touchpad monitoring stopped" << std::endl;
-  }
-
-  // 静态回调函数
-  static void HandleInputValue(void* context, IOReturn result, void* sender, IOHIDValueRef value) {
-    TouchpadMonitor* self = static_cast<TouchpadMonitor*>(context);
-    
-    IOHIDElementRef element = IOHIDValueGetElement(value);
-    int usage = IOHIDElementGetUsage(element);
-    
-    // 简化的触摸检测逻辑
-    // 实际实现需要解析 HID 报告以获取准确的手指数量
-    
-    // 这里使用简化的模拟逻辑
-    int fingerCount = self->DetectFingerCount(element, value);
-    
-    // 检测状态变化
-    if (fingerCount == 1 && self->previousFingerCount == 0) {
-      self->EmitTouchEvent("touch-start", fingerCount);
-    } else if (fingerCount == 0 && self->previousFingerCount == 1) {
-      self->EmitTouchEvent("touch-end", fingerCount);
-    }
-    
-    self->previousFingerCount = fingerCount;
-  }
-
-  int DetectFingerCount(IOHIDElementRef element, IOHIDValueRef value) {
-    // 简化的手指数量检测
-    // 实际实现需要解析 HID 报告
-    // 这里返回模拟值用于测试
-    
-    int usage = IOHIDElementGetUsage(element);
-    int intValue = IOHIDValueGetIntegerValue(value);
-    
-    // 触摸通常有特定的 usage page/usage
-    // 这里简化处理
-    if (usage == 0x30 || usage == 0x31) {  // X, Y 坐标
-      if (intValue > 0) {
-        return 1;  // 假设单指
+    if (isRunning) {
+      for (MTDeviceRef device : activeDevices) {
+        if (device) {
+          MTDeviceStop(device);
+        }
       }
+      activeDevices.clear();
+      isRunning = false;
+      std::cout << "Touchpad monitoring stopped" << std::endl;
     }
-    
+
+    if (globalInstance == this) {
+      globalInstance = nullptr;
+    }
+
+    if (multitouchSupportHandle) {
+      dlclose(multitouchSupportHandle);
+      multitouchSupportHandle = nullptr;
+    }
+  }
+
+  static int HandleContactFrame(MTDeviceRef device, MTContact* contacts, int numContacts, double timestamp, int frame) {
+    if (globalInstance) {
+      globalInstance->ProcessContacts(contacts, numContacts);
+    }
     return 0;
   }
 
@@ -178,16 +243,11 @@ private:
       jsCallback.Call({event});
     });
   }
-
-  IOHIDManagerRef hidManager;
-  bool isRunning;
-  int previousFingerCount;
-  Napi::ThreadSafeFunction tsfn;
 };
 
 Napi::FunctionReference TouchpadMonitor::constructor;
+TouchpadMonitor* globalInstance = nullptr;
 
-// 初始化模块
 Napi::Object InitAll(Napi::Env env, Napi::Object exports) {
   TouchpadMonitor::Init(env, exports);
   return exports;
