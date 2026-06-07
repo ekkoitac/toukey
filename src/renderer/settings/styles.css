@@ -120,6 +120,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .mapping-key {
@@ -135,6 +136,13 @@ body {
   font-family: 'SF Mono', Monaco, monospace;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.combo-key {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mapping-arrow {
@@ -255,6 +263,35 @@ body {
 .input-key.capturing {
   border-color: var(--accent-color);
   background: rgba(10, 132, 255, 0.1);
+}
+
+.modifier-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.modifier-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.modifier-option input {
+  margin: 0;
+}
+
+.modifier-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .form-actions {

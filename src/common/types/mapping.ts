@@ -1,13 +1,25 @@
+import { MacKey, ModifierKey } from './keys'
+
+/**
+ * 目标组合键
+ */
+export interface KeyCombo {
+  /** 主按键 */
+  key: MacKey
+  /** 同时按下的修饰键 */
+  modifiers: ModifierKey[]
+}
+
 /**
  * 按键映射规则
  */
 export interface KeyMapping {
   /** 源按键（如 'i'） */
-  from: string
-  /** 目标按键（如 'up'） */
-  to: string
-  /** 目标类型：按键或命令 */
-  toType: 'key' | 'command'
+  from: MacKey
+  /** 目标组合键（如 Cmd+Left） */
+  to: KeyCombo
+  /** 目标类型：组合键 */
+  toType: 'combo'
 }
 
 /**

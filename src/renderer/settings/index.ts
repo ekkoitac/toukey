@@ -1,4 +1,104 @@
-import { AppConfig, KeyMapping, LayerState } from '../../common/types/mapping'
+import { AppConfig, KeyCombo, KeyMapping, LayerState } from '../../common/types/mapping'
+import {
+  getKeyLabel,
+  isKnownMacKey,
+  KeyGroup,
+  MAC_KEY_DEFINITIONS,
+  MacKey,
+  ModifierKey,
+  MODIFIER_KEYS
+} from '../../common/types/keys'
+
+const KEY_GROUPS: KeyGroup[] = [
+  'letter',
+  'number',
+  'symbol',
+  'navigation',
+  'function',
+  'modifier',
+  'keypad'
+]
+
+const KEY_GROUP_LABELS: Record<KeyGroup, string> = {
+  letter: '字母',
+  number: '数字',
+  symbol: '符号',
+  navigation: '导航与控制',
+  function: '功能键',
+  modifier: '修饰键',
+  keypad: '数字小键盘'
+}
+
+const MODIFIER_SYMBOLS: Record<ModifierKey, string> = {
+  command: '⌘',
+  shift: '⇧',
+  option: '⌥',
+  control: '⌃',
+  fn: 'Fn'
+}
+
+const DISPLAY_LABELS: Record<string, string> = {
+  up: '↑',
+  down: '↓',
+  left: '←',
+  right: '→',
+  pageup: 'PgUp',
+  pagedown: 'PgDn',
+  escape: 'Esc',
+  delete: 'Del',
+  forwarddelete: 'Forward Del',
+  return: 'Enter'
+}
+
+const CODE_TO_KEY: Record<string, MacKey> = {
+  Backquote: 'grave',
+  Minus: 'minus',
+  Equal: 'equal',
+  BracketLeft: 'leftbracket',
+  BracketRight: 'rightbracket',
+  Backslash: 'backslash',
+  Semicolon: 'semicolon',
+  Quote: 'quote',
+  Comma: 'comma',
+  Period: 'period',
+  Slash: 'slash',
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+  Home: 'home',
+  End: 'end',
+  PageUp: 'pageup',
+  PageDown: 'pagedown',
+  Help: 'help',
+  Escape: 'escape',
+  Space: 'space',
+  Enter: 'return',
+  Return: 'return',
+  Tab: 'tab',
+  Backspace: 'delete',
+  Delete: 'forwarddelete',
+  CapsLock: 'capslock',
+  MetaLeft: 'command',
+  MetaRight: 'rightcommand',
+  ShiftLeft: 'shift',
+  ShiftRight: 'rightshift',
+  AltLeft: 'option',
+  AltRight: 'rightoption',
+  ControlLeft: 'control',
+  ControlRight: 'rightcontrol',
+  Fn: 'fn',
+  NumpadDecimal: 'keypaddecimal',
+  NumpadMultiply: 'keypadmultiply',
+  NumpadAdd: 'keypadplus',
+  NumpadClear: 'keypadclear',
+  NumpadDivide: 'keypaddivide',
+  NumpadEnter: 'keypadenter',
+  NumpadSubtract: 'keypadminus',
+  NumpadEqual: 'keypadequals'
+}
+
+const KEY_BY_NAME = new Map(MAC_KEY_DEFINITIONS.map(definition => [definition.key, definition]))
 
 /**
  * 配置界面控制器
@@ -6,14 +106,17 @@ import { AppConfig, KeyMapping, LayerState } from '../../common/types/mapping'
 class SettingsController {
   private config: AppConfig | null = null
   private editingIndex: number = -1
-  private capturingKey: boolean = false
+  private capturingInput: 'from' | 'to' | null = null
+  private targetCombo: KeyCombo = { key: 'up', modifiers: [] }
 
   // DOM 元素
   private elements = {
     mappingList: document.getElementById('mapping-list') as HTMLDivElement,
     editSection: document.getElementById('edit-section') as HTMLElement,
     inputFrom: document.getElementById('input-from') as HTMLInputElement,
+    inputTo: document.getElementById('input-to') as HTMLInputElement,
     selectTo: document.getElementById('select-to') as HTMLSelectElement,
+    modifierList: document.getElementById('modifier-list') as HTMLDivElement,
     btnAdd: document.getElementById('btn-add') as HTMLButtonElement,
     btnSave: document.getElementById('btn-save') as HTMLButtonElement,
     btnCancel: document.getElementById('btn-cancel') as HTMLButtonElement,
@@ -22,6 +125,7 @@ class SettingsController {
   }
 
   constructor() {
+    this.populateKeySelect()
     this.bindEvents()
     this.loadConfig()
     this.listenConfigUpdates()
@@ -32,26 +136,39 @@ class SettingsController {
    * 绑定事件
    */
   private bindEvents(): void {
-    // 添加按钮
     this.elements.btnAdd.addEventListener('click', () => this.showEditForm())
-
-    // 保存按钮
     this.elements.btnSave.addEventListener('click', () => this.saveMapping())
-
-    // 取消按钮
     this.elements.btnCancel.addEventListener('click', () => this.hideEditForm())
-
-    // 重置按钮
     this.elements.btnReset.addEventListener('click', () => this.resetToDefault())
 
-    // 按键捕获
-    this.elements.inputFrom.addEventListener('keydown', (e) => this.handleKeyCapture(e))
-    this.elements.inputFrom.addEventListener('focus', () => this.startKeyCapture())
+    this.elements.inputFrom.addEventListener('keydown', (e) => this.handleSourceCapture(e))
+    this.elements.inputFrom.addEventListener('focus', () => this.startKeyCapture('from'))
     this.elements.inputFrom.addEventListener('blur', () => this.stopKeyCapture())
 
-    // 键盘全局监听（用于捕获）
+    this.elements.inputTo.addEventListener('keydown', (e) => this.handleTargetCapture(e))
+    this.elements.inputTo.addEventListener('focus', () => this.startKeyCapture('to'))
+    this.elements.inputTo.addEventListener('blur', () => this.stopKeyCapture())
+
+    this.elements.selectTo.addEventListener('change', () => {
+      this.targetCombo = {
+        ...this.targetCombo,
+        key: this.elements.selectTo.value
+      }
+      this.renderTargetControls()
+    })
+
+    this.modifierInputs().forEach(input => {
+      input.addEventListener('change', () => {
+        this.targetCombo = {
+          ...this.targetCombo,
+          modifiers: this.selectedModifiers()
+        }
+        this.renderTargetControls()
+      })
+    })
+
     document.addEventListener('keydown', (e) => {
-      if (this.capturingKey) {
+      if (this.capturingInput) {
         e.preventDefault()
       }
     })
@@ -115,7 +232,7 @@ class SettingsController {
         <div class="mapping-info">
           <span class="mapping-key">${this.formatKey(mapping.from)}</span>
           <span class="mapping-arrow">→</span>
-          <span class="mapping-key">${this.formatTarget(mapping.to)}</span>
+          <span class="mapping-key combo-key">${this.formatCombo(mapping.to)}</span>
         </div>
         <div class="mapping-actions">
           <button class="btn btn-icon btn-secondary" data-action="edit" data-index="${index}">编辑</button>
@@ -124,7 +241,6 @@ class SettingsController {
       </div>
     `).join('')
 
-    // 绑定列表项事件
     this.elements.mappingList.querySelectorAll('[data-action]').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const target = e.currentTarget as HTMLElement
@@ -144,29 +260,14 @@ class SettingsController {
    * 格式化按键显示
    */
   private formatKey(key: string): string {
-    const keyMap: Record<string, string> = {
-      'up': '↑',
-      'down': '↓',
-      'left': '←',
-      'right': '→',
-      'home': 'Home',
-      'end': 'End',
-      'pageup': 'PgUp',
-      'pagedown': 'PgDn',
-      'escape': 'Esc',
-      'delete': 'Del',
-      'space': 'Space',
-      'return': 'Enter',
-      'tab': 'Tab'
-    }
-    return keyMap[key] || key.toUpperCase()
+    return DISPLAY_LABELS[key] || getKeyLabel(key)
   }
 
   /**
-   * 格式化目标显示
+   * 格式化组合键显示
    */
-  private formatTarget(target: string): string {
-    return this.formatKey(target)
+  private formatCombo(combo: KeyCombo): string {
+    return [...combo.modifiers.map(modifier => MODIFIER_SYMBOLS[modifier]), this.formatKey(combo.key)].join(' + ')
   }
 
   /**
@@ -177,15 +278,18 @@ class SettingsController {
     this.elements.editSection.classList.remove('hidden')
 
     if (index >= 0 && this.config) {
-      // 编辑模式
       const mapping = this.config.mappings[index]
       this.elements.inputFrom.value = mapping.from
-      this.elements.selectTo.value = mapping.to
+      this.targetCombo = {
+        key: mapping.to.key,
+        modifiers: [...mapping.to.modifiers]
+      }
     } else {
-      // 添加模式
       this.elements.inputFrom.value = ''
-      this.elements.selectTo.value = 'up'
+      this.targetCombo = { key: 'up', modifiers: [] }
     }
+
+    this.renderTargetControls()
   }
 
   /**
@@ -200,57 +304,58 @@ class SettingsController {
   /**
    * 开始按键捕获
    */
-  private startKeyCapture(): void {
-    this.capturingKey = true
-    this.elements.inputFrom.classList.add('capturing')
-    this.elements.inputFrom.placeholder = '按下任意键...'
+  private startKeyCapture(input: 'from' | 'to'): void {
+    this.capturingInput = input
+    const element = input === 'from' ? this.elements.inputFrom : this.elements.inputTo
+    element.classList.add('capturing')
+    element.placeholder = input === 'from' ? '按下任意源按键...' : '按下目标组合键...'
   }
 
   /**
    * 停止按键捕获
    */
   private stopKeyCapture(): void {
-    this.capturingKey = false
+    this.capturingInput = null
     this.elements.inputFrom.classList.remove('capturing')
+    this.elements.inputTo.classList.remove('capturing')
     this.elements.inputFrom.placeholder = '点击输入按键...'
+    this.elements.inputTo.placeholder = '点击输入组合键...'
   }
 
   /**
-   * 处理按键捕获
+   * 处理源按键捕获
    */
-  private handleKeyCapture(e: KeyboardEvent): void {
+  private handleSourceCapture(e: KeyboardEvent): void {
     e.preventDefault()
     e.stopPropagation()
 
-    // 获取按键字符
-    let key = e.key.toLowerCase()
-
-    // 特殊键映射
-    const specialKeys: Record<string, string> = {
-      'arrowup': 'up',
-      'arrowdown': 'down',
-      'arrowleft': 'left',
-      'arrowright': 'right',
-      'home': 'home',
-      'end': 'end',
-      'pageup': 'pageup',
-      'pagedown': 'pagedown',
-      'escape': 'escape',
-      'delete': 'delete',
-      ' ': 'space',
-      'enter': 'return',
-      'tab': 'tab'
-    }
-
-    key = specialKeys[key] || key
-
-    // 过滤无效按键（控制键等）
-    if (key.length > 1 && !specialKeys[key]) {
+    const key = this.keyboardEventToMacKey(e)
+    if (!key) {
       return
     }
 
     this.elements.inputFrom.value = key
     this.elements.inputFrom.blur()
+  }
+
+  /**
+   * 处理目标组合键捕获
+   */
+  private handleTargetCapture(e: KeyboardEvent): void {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const key = this.keyboardEventToMacKey(e)
+    if (!key) {
+      return
+    }
+
+    const mainModifier = KEY_BY_NAME.get(key)?.modifier
+    const modifiers = this.eventModifiers(e).filter(modifier => modifier !== mainModifier)
+
+    this.targetCombo = { key, modifiers }
+    this.renderTargetControls()
+    this.elements.inputTo.blur()
   }
 
   /**
@@ -260,30 +365,35 @@ class SettingsController {
     if (!this.config) return
 
     const from = this.elements.inputFrom.value.trim().toLowerCase()
-    const to = this.elements.selectTo.value
+    const to = {
+      key: this.targetCombo.key,
+      modifiers: [...this.targetCombo.modifiers]
+    }
 
-    if (!from) {
-      this.showError('请输入源按键')
+    if (!from || !isKnownMacKey(from)) {
+      this.showError('请输入有效的源按键')
       return
     }
 
-    // 检查重复
+    if (!isKnownMacKey(to.key)) {
+      this.showError('请选择有效的目标主按键')
+      return
+    }
+
     const existingIndex = this.config.mappings.findIndex(m => m.from === from)
     if (existingIndex >= 0 && existingIndex !== this.editingIndex) {
       this.showError('该按键已有映射')
       return
     }
 
-    // 创建新配置
+    const newMapping: KeyMapping = { from, to, toType: 'combo' }
     const newConfig: AppConfig = { ...this.config }
 
     if (this.editingIndex >= 0) {
-      // 更新现有映射
       newConfig.mappings = [...newConfig.mappings]
-      newConfig.mappings[this.editingIndex] = { from, to, toType: 'key' }
+      newConfig.mappings[this.editingIndex] = newMapping
     } else {
-      // 添加新映射
-      newConfig.mappings = [...newConfig.mappings, { from, to, toType: 'key' }]
+      newConfig.mappings = [...newConfig.mappings, newMapping]
     }
 
     try {
@@ -339,6 +449,102 @@ class SettingsController {
       console.error('Failed to reset config:', error)
       this.showError('重置失败')
     }
+  }
+
+  private populateKeySelect(): void {
+    this.elements.selectTo.innerHTML = KEY_GROUPS.map(group => {
+      const options = MAC_KEY_DEFINITIONS
+        .filter(definition => definition.group === group)
+        .map(definition => `<option value="${definition.key}">${definition.label}</option>`)
+        .join('')
+
+      return `<optgroup label="${KEY_GROUP_LABELS[group]}">${options}</optgroup>`
+    }).join('')
+  }
+
+  private renderTargetControls(): void {
+    this.elements.inputTo.value = this.formatCombo(this.targetCombo)
+    this.elements.selectTo.value = this.targetCombo.key
+
+    this.modifierInputs().forEach(input => {
+      input.checked = this.targetCombo.modifiers.includes(input.value as ModifierKey)
+    })
+  }
+
+  private modifierInputs(): HTMLInputElement[] {
+    return Array.from(this.elements.modifierList.querySelectorAll('input[type="checkbox"]'))
+  }
+
+  private selectedModifiers(): ModifierKey[] {
+    const selected = new Set(
+      this.modifierInputs()
+        .filter(input => input.checked)
+        .map(input => input.value as ModifierKey)
+    )
+
+    return MODIFIER_KEYS.filter(modifier => selected.has(modifier))
+  }
+
+  private eventModifiers(e: KeyboardEvent): ModifierKey[] {
+    const modifiers: ModifierKey[] = []
+    if (e.metaKey) modifiers.push('command')
+    if (e.shiftKey) modifiers.push('shift')
+    if (e.altKey) modifiers.push('option')
+    if (e.ctrlKey) modifiers.push('control')
+
+    const key = e.key.toLowerCase()
+    if (key === 'fn' || key === 'function') {
+      modifiers.push('fn')
+    }
+
+    return modifiers
+  }
+
+  private keyboardEventToMacKey(e: KeyboardEvent): MacKey | null {
+    const code = e.code
+
+    if (/^Key[A-Z]$/.test(code)) {
+      return code.slice(3).toLowerCase()
+    }
+
+    if (/^Digit[0-9]$/.test(code)) {
+      return code.slice(5)
+    }
+
+    if (/^Numpad[0-9]$/.test(code)) {
+      return `keypad${code.slice(6)}`
+    }
+
+    if (/^F([1-9]|1[0-9]|20)$/.test(code)) {
+      return code.toLowerCase()
+    }
+
+    if (CODE_TO_KEY[code]) {
+      return CODE_TO_KEY[code]
+    }
+
+    const key = e.key.toLowerCase()
+    if (/^[a-z0-9]$/.test(key) && isKnownMacKey(key)) {
+      return key
+    }
+
+    const fallbackKeys: Record<string, MacKey> = {
+      arrowup: 'up',
+      arrowdown: 'down',
+      arrowleft: 'left',
+      arrowright: 'right',
+      pageup: 'pageup',
+      pagedown: 'pagedown',
+      escape: 'escape',
+      esc: 'escape',
+      enter: 'return',
+      return: 'return',
+      backspace: 'delete',
+      delete: 'forwarddelete',
+      ' ': 'space'
+    }
+
+    return fallbackKeys[key] || null
   }
 
   /**

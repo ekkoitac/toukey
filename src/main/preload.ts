@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS, AppConfig, LayerState } from '../common/types/mapping'
 
+const configUpdateListeners = new WeakMap<
+  (config: AppConfig) => void,
+  (event: Electron.IpcRendererEvent, config: AppConfig) => void
+>()
+
 /**
  * 暴露给渲染进程的 API
  * 通过 contextBridge 实现上下文隔离
@@ -20,12 +25,18 @@ const settingsAPI = {
 
   // 监听配置变更
   onConfigUpdate: (callback: (config: AppConfig) => void): void => {
-    ipcRenderer.on(IPC_CHANNELS.CONFIG_UPDATED, (_, config) => callback(config))
+    const listener = (_: Electron.IpcRendererEvent, config: AppConfig) => callback(config)
+    configUpdateListeners.set(callback, listener)
+    ipcRenderer.on(IPC_CHANNELS.CONFIG_UPDATED, listener)
   },
 
   // 移除监听器
   removeConfigUpdate: (callback: (config: AppConfig) => void): void => {
-    ipcRenderer.removeListener(IPC_CHANNELS.CONFIG_UPDATED, callback)
+    const listener = configUpdateListeners.get(callback)
+    if (listener) {
+      ipcRenderer.removeListener(IPC_CHANNELS.CONFIG_UPDATED, listener)
+      configUpdateListeners.delete(callback)
+    }
   },
 
   // 获取当前层状态

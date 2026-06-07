@@ -1,9 +1,11 @@
 import { app } from 'electron'
+import { FSWatcher, watch } from 'fs'
 import fs from 'fs/promises'
 import path from 'path'
 import logger from '../utils/logger'
 import { AppConfig, KeyMapping } from '../../common/types/mapping'
-import { DEFAULT_CONFIG } from './defaults'
+import { isKnownMacKey, MODIFIER_KEYS } from '../../common/types/keys'
+import { CONFIG_VERSION, DEFAULT_CONFIG } from './defaults'
 
 /**
  * 配置管理器
@@ -13,7 +15,7 @@ export class ConfigManager {
   private configPath: string = ''
   private currentConfig: AppConfig = DEFAULT_CONFIG
   private watchers: Set<(config: AppConfig) => void> = new Set()
-  private fileWatcher: fs.FileWatcher | null = null
+  private fileWatcher: FSWatcher | null = null
   private isWriting: boolean = false
 
   /**
@@ -77,6 +79,7 @@ export class ConfigManager {
       )
 
       this.currentConfig = config
+      this.emitChange()
       logger.info('Config saved successfully')
     } finally {
       // 延迟重置 writing 状态以确保避开文件系统 change 事件的延迟触发
@@ -95,7 +98,6 @@ export class ConfigManager {
       mappings
     }
     await this.saveConfig(newConfig)
-    this.emitChange()
   }
 
   /**
@@ -103,7 +105,6 @@ export class ConfigManager {
    */
   async resetToDefault(): Promise<void> {
     await this.saveConfig(DEFAULT_CONFIG)
-    this.emitChange()
     logger.info('Config reset to default')
   }
 
@@ -160,7 +161,7 @@ export class ConfigManager {
     }
 
     // 检查必需字段
-    if (typeof config.version !== 'number') {
+    if (config.version !== CONFIG_VERSION) {
       return false
     }
 
@@ -173,15 +174,36 @@ export class ConfigManager {
       if (!mapping || typeof mapping !== 'object') {
         return false
       }
-      if (typeof mapping.from !== 'string' || typeof mapping.to !== 'string') {
+      if (typeof mapping.from !== 'string' || !isKnownMacKey(mapping.from)) {
         return false
       }
-      if (mapping.toType !== 'key' && mapping.toType !== 'command') {
+      if (mapping.toType !== 'combo') {
         return false
+      }
+      if (!mapping.to || typeof mapping.to !== 'object') {
+        return false
+      }
+      if (typeof mapping.to.key !== 'string' || !isKnownMacKey(mapping.to.key)) {
+        return false
+      }
+      if (!Array.isArray(mapping.to.modifiers)) {
+        return false
+      }
+      for (const modifier of mapping.to.modifiers) {
+        if (!MODIFIER_KEYS.includes(modifier)) {
+          return false
+        }
       }
     }
 
     if (!config.settings || typeof config.settings !== 'object') {
+      return false
+    }
+
+    if (
+      typeof config.settings.launchAtLogin !== 'boolean' ||
+      typeof config.settings.showLayerIndicator !== 'boolean'
+    ) {
       return false
     }
 
@@ -204,7 +226,6 @@ export class ConfigManager {
     // 重置为默认配置
     this.currentConfig = DEFAULT_CONFIG
     await this.saveConfig(DEFAULT_CONFIG)
-    this.emitChange()
     logger.info('Config reset to default due to load error')
   }
 
@@ -213,7 +234,7 @@ export class ConfigManager {
    */
   private setupFileWatcher(): void {
     try {
-      this.fileWatcher = fs.watch(this.configPath, (eventType) => {
+      this.fileWatcher = watch(this.configPath, (eventType) => {
         if (eventType === 'change') {
           if (this.isWriting) {
             logger.debug('Config file changed by self write, ignoring reload')

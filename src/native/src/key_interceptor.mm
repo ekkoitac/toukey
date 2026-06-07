@@ -7,6 +7,8 @@
 #include <chrono>
 #include <iostream>
 
+static constexpr int64_t kTokeySyntheticEventUserData = 0x544F4B45594D4150LL;
+
 class KeyInterceptor : public Napi::ObjectWrap<KeyInterceptor> {
 public:
   static Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -189,6 +191,10 @@ private:
     }
 
     if (type != kCGEventKeyDown && type != kCGEventKeyUp) {
+      return event;
+    }
+
+    if (CGEventGetIntegerValueField(event, kCGEventSourceUserData) == kTokeySyntheticEventUserData) {
       return event;
     }
 

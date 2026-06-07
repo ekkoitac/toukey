@@ -4,14 +4,14 @@ import { AppConfig } from '../../common/types/mapping'
  * 默认应用配置
  */
 export const DEFAULT_CONFIG: AppConfig = {
-  version: 1,
+  version: 2,
   mappings: [
-    { from: 'i', to: 'up', toType: 'key' },
-    { from: 'k', to: 'down', toType: 'key' },
-    { from: 'j', to: 'left', toType: 'key' },
-    { from: 'l', to: 'right', toType: 'key' },
-    { from: 'u', to: 'home', toType: 'key' },
-    { from: 'o', to: 'end', toType: 'key' }
+    { from: 'i', to: { key: 'up', modifiers: [] }, toType: 'combo' },
+    { from: 'k', to: { key: 'down', modifiers: [] }, toType: 'combo' },
+    { from: 'j', to: { key: 'left', modifiers: [] }, toType: 'combo' },
+    { from: 'l', to: { key: 'right', modifiers: [] }, toType: 'combo' },
+    { from: 'u', to: { key: 'home', modifiers: [] }, toType: 'combo' },
+    { from: 'o', to: { key: 'end', modifiers: [] }, toType: 'combo' }
   ],
   settings: {
     launchAtLogin: false,
@@ -23,4 +23,4 @@ export const DEFAULT_CONFIG: AppConfig = {
  * 配置 Schema 版本
  * 用于配置迁移
  */
-export const CONFIG_VERSION = 1
+export const CONFIG_VERSION = 2

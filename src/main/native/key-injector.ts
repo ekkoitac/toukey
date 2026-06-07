@@ -4,6 +4,7 @@
  */
 
 import path from 'path'
+import { MacKey, ModifierKey } from '../../common/types/keys'
 
 // 尝试加载原生模块
 let nativeModule: any
@@ -19,16 +20,7 @@ try {
 /**
  * 支持的键码
  */
-export type KeyCode = 
-  // 方向键
-  | 'up' | 'down' | 'left' | 'right'
-  // 功能键
-  | 'home' | 'end' | 'pageup' | 'pagedown'
-  // 常用键
-  | 'escape' | 'space' | 'return' | 'tab' | 'delete' | 'forwarddelete'
-  // 字母键
-  | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm'
-  | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z'
+export type KeyCode = MacKey
 
 /**
  * KeyInjector 类
@@ -48,7 +40,7 @@ export class KeyInjector {
   /**
    * 注入单个按键（按下+释放）
    */
-  injectKey(keyCode: KeyCode | string): void {
+  injectKey(keyCode: KeyCode): void {
     if (this.native) {
       this.native.injectKey(keyCode)
     } else {
@@ -59,7 +51,7 @@ export class KeyInjector {
   /**
    * 注入组合键（如需要扩展）
    */
-  injectCombo(modifiers: string[], keyCode: KeyCode | string): void {
+  injectCombo(modifiers: ModifierKey[], keyCode: KeyCode): void {
     if (this.native && this.native.injectCombo) {
       this.native.injectCombo(modifiers, keyCode)
     } else {

@@ -14,6 +14,6 @@ if (app.isPackaged) {
 
 // 日志轮转配置
 log.transports.file.maxSize = 10 * 1024 * 1024  // 10MB
-log.transports.file.maxFiles = 5
+;(log.transports.file as (typeof log.transports.file & { maxFiles: number })).maxFiles = 5
 
 export default log

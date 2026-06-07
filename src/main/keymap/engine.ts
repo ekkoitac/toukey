@@ -66,8 +66,8 @@ export class KeymapEngine {
     this.rules.clear()
     
     for (const rule of rules) {
-      // 只加载 key 类型的映射
-      if (rule.toType === 'key') {
+      // 只加载 combo 类型的映射
+      if (rule.toType === 'combo') {
         this.rules.set(rule.from, rule)
       }
     }
@@ -148,9 +148,10 @@ export class KeymapEngine {
       return
     }
 
-    if (rule.toType === 'key') {
-      logger.debug(`Mapping ${fromKey} -> ${rule.to}`)
-      this.keyInjector.injectKey(rule.to)
+    if (rule.toType === 'combo') {
+      const target = [...rule.to.modifiers, rule.to.key].join('+')
+      logger.debug(`Mapping ${fromKey} -> ${target}`)
+      this.keyInjector.injectCombo(rule.to.modifiers, rule.to.key)
     }
   }
 
