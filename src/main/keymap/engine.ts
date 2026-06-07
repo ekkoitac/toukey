@@ -13,6 +13,9 @@ export class KeymapEngine {
   private enabled: boolean = false
   private keyInterceptor: any = null
   private keyInjector: any = null
+  private keydownHandler: ((event: KeyEvent) => void) | null = null
+  private unsubscribeStateChange: (() => void) | null = null
+  private unsubscribeConfigChange: (() => void) | null = null
 
   constructor(
     private stateMachine: TouchpadStateMachine,
@@ -35,22 +38,15 @@ export class KeymapEngine {
       this.setupInterceptor()
 
       // 层状态变化时同步原生拦截条件
-      this.stateMachine.onStateChange(() => {
+      this.unsubscribeStateChange = this.stateMachine.onStateChange(() => {
         this.syncInterceptState()
       })
 
       // 启动拦截器
-      const success = this.keyInterceptor.start()
-      if (!success) {
-        logger.warn('Key interceptor failed to start, may need Accessibility permission')
-      } else {
-        this.enabled = true
-        this.syncInterceptState()
-        logger.info('Keymap engine initialized and started')
-      }
+      this.enable()
 
       // 监听配置变更
-      this.configManager.onConfigChange((config) => {
+      this.unsubscribeConfigChange = this.configManager.onConfigChange((config) => {
         this.loadRules(config.mappings)
       })
     } catch (error) {
@@ -79,25 +75,64 @@ export class KeymapEngine {
   /**
    * 启用引擎
    */
-  enable(): void {
+  enable(): boolean {
+    if (!this.keyInterceptor) {
+      return false
+    }
+
+    if (this.enabled) {
+      this.syncInterceptState()
+      return true
+    }
+
+    if (this.keydownHandler) {
+      this.keyInterceptor.on('keydown', this.keydownHandler)
+    }
+
+    const success = this.keyInterceptor.start()
+    if (!success) {
+      this.keyInterceptor.stop()
+      logger.warn('Key interceptor failed to start, may need Accessibility permission')
+      return false
+    }
+
     this.enabled = true
     this.syncInterceptState()
     logger.info('Keymap engine enabled')
+    return true
   }
 
   /**
    * 禁用引擎
    */
   disable(): void {
+    if (!this.keyInterceptor) {
+      this.enabled = false
+      return
+    }
+
     this.enabled = false
     this.syncInterceptState()
+    this.keyInterceptor.stop()
     logger.info('Keymap engine disabled')
+  }
+
+  /**
+   * 引擎是否启用
+   */
+  isEnabled(): boolean {
+    return this.enabled
   }
 
   /**
    * 释放资源
    */
   dispose(): void {
+    this.unsubscribeStateChange?.()
+    this.unsubscribeStateChange = null
+    this.unsubscribeConfigChange?.()
+    this.unsubscribeConfigChange = null
+
     if (this.keyInterceptor) {
       this.keyInterceptor.stop()
       this.keyInterceptor = null
@@ -112,10 +147,10 @@ export class KeymapEngine {
    */
   private setupInterceptor(): void {
     // 监听按键按下事件（拦截逻辑在原生层，由 syncInterceptState 同步）
-    this.keyInterceptor.on('keydown', (event: KeyEvent) => {
+    this.keydownHandler = (event: KeyEvent) => {
       const keyChar = this.keyCodeToChar(event.keyCode)
       this.executeMapping(keyChar)
-    })
+    }
   }
 
   /**

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS, AppConfig, LayerState } from '../common/types/mapping'
+import { IPC_CHANNELS, AppConfig, LayerState, RuntimeStatus } from '../common/types/mapping'
 
 const configUpdateListeners = new WeakMap<
   (config: AppConfig) => void,
@@ -46,6 +46,19 @@ const settingsAPI = {
   // 监听层状态变更
   onLayerStateUpdate: (callback: (state: LayerState) => void): void => {
     ipcRenderer.on(IPC_CHANNELS.LAYER_STATE_UPDATED, (_, state) => callback(state))
+  },
+
+  // 获取运行状态
+  getRuntimeStatus: (): Promise<RuntimeStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.RUNTIME_STATUS_GET),
+
+  // 开启/关闭触摸板和键盘监听
+  setListenersEnabled: (enabled: boolean): Promise<RuntimeStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.RUNTIME_LISTENERS_SET, enabled),
+
+  // 监听运行状态变更
+  onRuntimeStatusUpdate: (callback: (status: RuntimeStatus) => void): void => {
+    ipcRenderer.on(IPC_CHANNELS.RUNTIME_LISTENERS_UPDATED, (_, status) => callback(status))
   }
 }
 

@@ -3,7 +3,7 @@ import path from 'path'
 import logger from '../utils/logger'
 import { ConfigManager } from '../config/manager'
 import { KeymapEngine } from '../keymap/engine'
-import { IPC_CHANNELS } from '../../common/types/mapping'
+import { IPC_CHANNELS, RuntimeStatus } from '../../common/types/mapping'
 import { TouchpadStateMachine } from '../state-machine/touchpad-state'
 
 /**
@@ -43,7 +43,7 @@ export class SettingsWindow {
 
     this.window = new BrowserWindow({
       width: 500,
-      height: 600,
+      height: 660,
       resizable: false,
       minimizable: false,
       maximizable: false,
@@ -119,9 +119,33 @@ export class SettingsWindow {
       return this.stateMachine.getCurrentLayer()
     })
 
+    ipcMain.handle(IPC_CHANNELS.RUNTIME_STATUS_GET, () => {
+      return this.getRuntimeStatus()
+    })
+
+    ipcMain.handle(IPC_CHANNELS.RUNTIME_LISTENERS_SET, (_, enabled: boolean) => {
+      if (enabled) {
+        this.stateMachine.startMonitoring()
+        const keyInterceptorStarted = this.keymapEngine.enable()
+        if (!keyInterceptorStarted) {
+          this.stateMachine.stopMonitoring()
+          this.emitRuntimeStatus()
+          throw new Error('Key interceptor failed to start')
+        }
+      } else {
+        this.keymapEngine.disable()
+        this.stateMachine.stopMonitoring()
+      }
+
+      const status = this.getRuntimeStatus()
+      this.emitRuntimeStatus(status)
+      return status
+    })
+
     this.unsubscribeLayerState?.()
     this.unsubscribeLayerState = this.stateMachine.onStateChange((state) => {
       this.window?.webContents.send(IPC_CHANNELS.LAYER_STATE_UPDATED, state)
+      this.emitRuntimeStatus()
     })
 
     logger.info('IPC handlers set up')
@@ -135,8 +159,21 @@ export class SettingsWindow {
     ipcMain.removeHandler(IPC_CHANNELS.CONFIG_SAVE)
     ipcMain.removeHandler(IPC_CHANNELS.CONFIG_RESET)
     ipcMain.removeHandler(IPC_CHANNELS.LAYER_STATE_GET)
+    ipcMain.removeHandler(IPC_CHANNELS.RUNTIME_STATUS_GET)
+    ipcMain.removeHandler(IPC_CHANNELS.RUNTIME_LISTENERS_SET)
     this.unsubscribeLayerState?.()
     this.unsubscribeLayerState = null
+  }
+
+  private getRuntimeStatus(): RuntimeStatus {
+    return {
+      listenersEnabled: this.stateMachine.isMonitoring() && this.keymapEngine.isEnabled(),
+      layerState: this.stateMachine.getCurrentLayer()
+    }
+  }
+
+  private emitRuntimeStatus(status: RuntimeStatus = this.getRuntimeStatus()): void {
+    this.window?.webContents.send(IPC_CHANNELS.RUNTIME_LISTENERS_UPDATED, status)
   }
 }
 

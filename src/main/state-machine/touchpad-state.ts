@@ -17,6 +17,8 @@ export class TouchpadStateMachine {
   private state: StateContext
   private listeners: Set<(state: LayerState) => void> = new Set()
   private touchpadMonitor: any = null
+  private touchHandler: ((event: TouchpadEvent) => void) | null = null
+  private monitoring: boolean = false
 
   constructor() {
     this.state = { currentLayer: 'layer1' }
@@ -32,17 +34,52 @@ export class TouchpadStateMachine {
       this.touchpadMonitor = new TouchpadMonitor()
 
       // 监听触摸事件
-      this.touchpadMonitor.on('touch', (event: TouchpadEvent) => {
+      this.touchHandler = (event: TouchpadEvent) => {
         this.handleTouchEvent(event)
-      })
+      }
+      this.touchpadMonitor.on('touch', this.touchHandler)
 
       // 开始监听
-      this.touchpadMonitor.start()
-      logger.info('Touchpad monitor started')
+      this.startMonitoring()
     } catch (error) {
       logger.error('Failed to initialize touchpad monitor:', error)
       throw error
     }
+  }
+
+  /**
+   * 开始触摸板监听
+   */
+  startMonitoring(): void {
+    if (!this.touchpadMonitor || this.monitoring) {
+      return
+    }
+
+    this.touchpadMonitor.start()
+    this.monitoring = true
+    logger.info('Touchpad monitor started')
+  }
+
+  /**
+   * 停止触摸板监听，并确保状态回到正常层
+   */
+  stopMonitoring(): void {
+    if (!this.touchpadMonitor || !this.monitoring) {
+      this.resetToLayer1()
+      return
+    }
+
+    this.touchpadMonitor.stop()
+    this.monitoring = false
+    this.resetToLayer1()
+    logger.info('Touchpad monitor stopped')
+  }
+
+  /**
+   * 触摸板监听是否开启
+   */
+  isMonitoring(): boolean {
+    return this.monitoring
   }
 
   /**
@@ -116,11 +153,22 @@ export class TouchpadStateMachine {
    */
   dispose(): void {
     if (this.touchpadMonitor) {
-      this.touchpadMonitor.stop()
+      this.stopMonitoring()
+      if (this.touchHandler) {
+        this.touchpadMonitor.removeListener('touch', this.touchHandler)
+      }
       this.touchpadMonitor = null
-      logger.info('Touchpad monitor stopped')
     }
+    this.touchHandler = null
     this.listeners.clear()
+  }
+
+  private resetToLayer1(): void {
+    if (this.state.currentLayer !== 'layer1') {
+      this.state = { currentLayer: 'layer1' }
+      this.emit('layer1')
+      logger.info('State transition: layer2 -> layer1')
+    }
   }
 
   /**

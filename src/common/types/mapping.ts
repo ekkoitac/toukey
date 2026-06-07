@@ -45,6 +45,16 @@ export interface AppSettings {
 }
 
 /**
+ * 运行时状态
+ */
+export interface RuntimeStatus {
+  /** 触摸板与键盘监听是否开启 */
+  listenersEnabled: boolean
+  /** 当前层状态 */
+  layerState: LayerState
+}
+
+/**
  * 层状态
  */
 export type LayerState = 'layer1' | 'layer2'
@@ -84,5 +94,10 @@ export const IPC_CHANNELS = {
   
   // 层状态
   LAYER_STATE_GET: 'layer-state:get',
-  LAYER_STATE_UPDATED: 'layer-state:updated'
+  LAYER_STATE_UPDATED: 'layer-state:updated',
+
+  // 运行状态
+  RUNTIME_STATUS_GET: 'runtime-status:get',
+  RUNTIME_LISTENERS_SET: 'runtime-listeners:set',
+  RUNTIME_LISTENERS_UPDATED: 'runtime-listeners:updated'
 } as const

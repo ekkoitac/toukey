@@ -31,6 +31,7 @@ public:
     : Napi::ObjectWrap<KeyInterceptor>(info),
       eventTap(nullptr),
       runLoopSource(nullptr),
+      eventRunLoop(nullptr),
       eventQueue(nullptr),
       isRunning(false),
       interceptActive(false) {}
@@ -73,7 +74,9 @@ private:
       }
 
       runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0);
-      CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, kCFRunLoopCommonModes);
+      eventRunLoop = CFRunLoopGetCurrent();
+      CFRetain(eventRunLoop);
+      CFRunLoopAddSource(eventRunLoop, runLoopSource, kCFRunLoopCommonModes);
       CGEventTapEnable(eventTap, true);
 
       success = true;
@@ -152,13 +155,23 @@ private:
   }
 
   void StopMonitoring() {
-    if (eventQueue && isRunning) {
-      dispatch_sync(eventQueue, ^{
+    {
+      std::lock_guard<std::mutex> lock(stateMutex_);
+      interceptActive = false;
+      mappedKeyCodes.clear();
+    }
+
+    if (eventRunLoop && isRunning) {
+      dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+      CFRunLoopRef runLoop = eventRunLoop;
+      CFRetain(runLoop);
+
+      CFRunLoopPerformBlock(runLoop, kCFRunLoopCommonModes, ^{
         if (eventTap) {
           CGEventTapEnable(eventTap, false);
         }
         if (runLoopSource) {
-          CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, kCFRunLoopCommonModes);
+          CFRunLoopRemoveSource(runLoop, runLoopSource, kCFRunLoopCommonModes);
           CFRelease(runLoopSource);
           runLoopSource = nullptr;
         }
@@ -167,12 +180,21 @@ private:
           CFRelease(eventTap);
           eventTap = nullptr;
         }
-        CFRunLoopStop(CFRunLoopGetCurrent());
+        CFRunLoopStop(runLoop);
+        CFRelease(runLoop);
+        dispatch_semaphore_signal(sem);
       });
+      CFRunLoopWakeUp(runLoop);
+      dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
     }
 
     isRunning = false;
     eventQueue = nullptr;
+
+    if (eventRunLoop) {
+      CFRelease(eventRunLoop);
+      eventRunLoop = nullptr;
+    }
 
     if (tsfn) {
       tsfn.Release();
@@ -239,6 +261,7 @@ private:
 
   CFMachPortRef eventTap;
   CFRunLoopSourceRef runLoopSource;
+  CFRunLoopRef eventRunLoop;
   dispatch_queue_t eventQueue;
   bool isRunning;
   bool interceptActive;

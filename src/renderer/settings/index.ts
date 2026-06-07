@@ -1,4 +1,4 @@
-import { AppConfig, KeyCombo, KeyMapping, LayerState } from '../../common/types/mapping'
+import { AppConfig, KeyCombo, KeyMapping, LayerState, RuntimeStatus } from '../../common/types/mapping'
 import {
   getKeyLabel,
   isKnownMacKey,
@@ -108,6 +108,7 @@ class SettingsController {
   private editingIndex: number = -1
   private capturingInput: 'from' | 'to' | null = null
   private targetCombo: KeyCombo = { key: 'up', modifiers: [] }
+  private listenersEnabled: boolean = true
 
   // DOM 元素
   private elements = {
@@ -121,6 +122,8 @@ class SettingsController {
     btnSave: document.getElementById('btn-save') as HTMLButtonElement,
     btnCancel: document.getElementById('btn-cancel') as HTMLButtonElement,
     btnReset: document.getElementById('btn-reset') as HTMLButtonElement,
+    btnToggleListeners: document.getElementById('btn-toggle-listeners') as HTMLButtonElement,
+    listenerStatus: document.getElementById('listener-status') as HTMLParagraphElement,
     layerStatus: document.getElementById('layer-status') as HTMLSpanElement
   }
 
@@ -130,6 +133,7 @@ class SettingsController {
     this.loadConfig()
     this.listenConfigUpdates()
     this.listenLayerStateUpdates()
+    this.listenRuntimeStatusUpdates()
   }
 
   /**
@@ -140,6 +144,7 @@ class SettingsController {
     this.elements.btnSave.addEventListener('click', () => this.saveMapping())
     this.elements.btnCancel.addEventListener('click', () => this.hideEditForm())
     this.elements.btnReset.addEventListener('click', () => this.resetToDefault())
+    this.elements.btnToggleListeners.addEventListener('click', () => this.toggleListeners())
 
     this.elements.inputFrom.addEventListener('keydown', (e) => this.handleSourceCapture(e))
     this.elements.inputFrom.addEventListener('focus', () => this.startKeyCapture('from'))
@@ -214,8 +219,54 @@ class SettingsController {
   }
 
   private updateLayerStatus(state: LayerState): void {
-    this.elements.layerStatus.textContent =
-      state === 'layer2' ? '自定义层已激活' : '正常层'
+    this.elements.layerStatus.textContent = this.listenersEnabled
+      ? (state === 'layer2' ? '自定义层已激活' : '正常层')
+      : '正常层（监听已关闭）'
+  }
+
+  /**
+   * 监听运行状态更新
+   */
+  private async listenRuntimeStatusUpdates(): Promise<void> {
+    try {
+      const status = await window.api.getRuntimeStatus()
+      this.updateRuntimeStatus(status)
+    } catch (error) {
+      console.error('Failed to load runtime status:', error)
+      this.elements.listenerStatus.textContent = '监听状态读取失败'
+    }
+
+    window.api.onRuntimeStatusUpdate((status) => {
+      this.updateRuntimeStatus(status)
+    })
+  }
+
+  private updateRuntimeStatus(status: RuntimeStatus): void {
+    this.listenersEnabled = status.listenersEnabled
+    this.elements.listenerStatus.textContent = status.listenersEnabled
+      ? '触摸板和键盘监听已开启'
+      : '触摸板和键盘监听已关闭'
+    this.elements.btnToggleListeners.textContent = status.listenersEnabled
+      ? '关闭监听'
+      : '开启监听'
+    this.elements.btnToggleListeners.classList.toggle('btn-primary', !status.listenersEnabled)
+    this.elements.btnToggleListeners.classList.toggle('btn-secondary', status.listenersEnabled)
+    this.updateLayerStatus(status.layerState)
+  }
+
+  private async toggleListeners(): Promise<void> {
+    const nextEnabled = !this.listenersEnabled
+    this.elements.btnToggleListeners.disabled = true
+
+    try {
+      const status = await window.api.setListenersEnabled(nextEnabled)
+      this.updateRuntimeStatus(status)
+    } catch (error) {
+      console.error('Failed to toggle listeners:', error)
+      this.showError(nextEnabled ? '开启监听失败，请检查辅助功能权限' : '关闭监听失败')
+    } finally {
+      this.elements.btnToggleListeners.disabled = false
+    }
   }
 
   /**

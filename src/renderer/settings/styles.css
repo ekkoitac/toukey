@@ -94,6 +94,20 @@ body {
   margin-bottom: 12px;
 }
 
+/* 监听控制 */
+.listener-control {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.listener-status {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 /* 映射列表 */
 .mapping-list {
   max-height: 300px;
