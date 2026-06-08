@@ -6,8 +6,32 @@
 #include <unordered_set>
 #include <chrono>
 #include <iostream>
+#include <string>
+#include <vector>
 
 static constexpr int64_t kTokeySyntheticEventUserData = 0x544F4B45594D4150LL;
+
+static std::vector<std::string> ModifiersFromFlags(CGEventFlags flags) {
+  std::vector<std::string> modifiers;
+
+  if (flags & kCGEventFlagMaskCommand) {
+    modifiers.push_back("command");
+  }
+  if (flags & kCGEventFlagMaskShift) {
+    modifiers.push_back("shift");
+  }
+  if (flags & kCGEventFlagMaskAlternate) {
+    modifiers.push_back("option");
+  }
+  if (flags & kCGEventFlagMaskControl) {
+    modifiers.push_back("control");
+  }
+  if (flags & kCGEventFlagMaskSecondaryFn) {
+    modifiers.push_back("fn");
+  }
+
+  return modifiers;
+}
 
 class KeyInterceptor : public Napi::ObjectWrap<KeyInterceptor> {
 public:
@@ -222,10 +246,11 @@ private:
 
     int keyCode = static_cast<int>(CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode));
     bool isDown = (type == kCGEventKeyDown);
+    CGEventFlags flags = CGEventGetFlags(event);
 
     if (self->ShouldIntercept(keyCode, isDown)) {
       if (isDown) {
-        self->EmitKeyEvent(keyCode, true);
+        self->EmitKeyEvent(keyCode, true, ModifiersFromFlags(flags));
       }
       return NULL;
     }
@@ -241,14 +266,20 @@ private:
     return mappedKeyCodes.find(keyCode) != mappedKeyCodes.end();
   }
 
-  void EmitKeyEvent(int keyCode, bool isDown) {
+  void EmitKeyEvent(int keyCode, bool isDown, std::vector<std::string> modifiers) {
     if (!tsfn) return;
 
-    tsfn.NonBlockingCall([keyCode, isDown](Napi::Env env, Napi::Function jsCallback) {
+    tsfn.NonBlockingCall([keyCode, isDown, modifiers](Napi::Env env, Napi::Function jsCallback) {
       Napi::Object event = Napi::Object::New(env);
+      Napi::Array modifierArray = Napi::Array::New(env, modifiers.size());
+      for (size_t i = 0; i < modifiers.size(); i++) {
+        modifierArray.Set(static_cast<uint32_t>(i), modifiers[i]);
+      }
+
       event.Set("keyCode", keyCode);
       event.Set("keyChar", "");
       event.Set("isDown", isDown);
+      event.Set("modifiers", modifierArray);
       event.Set("timestamp", Napi::Number::New(env, static_cast<double>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch()

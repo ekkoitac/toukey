@@ -4,6 +4,7 @@
  */
 
 import path from 'path'
+import { ModifierKey } from '../../common/types/keys'
 
 // 尝试加载原生模块
 let nativeModule: any
@@ -23,6 +24,7 @@ export interface KeyEvent {
   keyCode: number
   keyChar: string
   isDown: boolean
+  modifiers: ModifierKey[]
   timestamp: number
 }
 

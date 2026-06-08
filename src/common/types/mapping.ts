@@ -75,6 +75,7 @@ export interface KeyEvent {
   keyCode: number
   keyChar: string
   isDown: boolean
+  modifiers: ModifierKey[]
   timestamp: number
 }
 

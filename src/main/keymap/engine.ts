@@ -1,4 +1,5 @@
 import { KeyMapping, LayerState, KeyEvent } from '../../common/types/mapping'
+import { ModifierKey, MODIFIER_KEYS } from '../../common/types/keys'
 import { TouchpadStateMachine } from '../state-machine/touchpad-state'
 import { ConfigManager } from '../config/manager'
 import logger from '../utils/logger'
@@ -149,7 +150,7 @@ export class KeymapEngine {
     // 监听按键按下事件（拦截逻辑在原生层，由 syncInterceptState 同步）
     this.keydownHandler = (event: KeyEvent) => {
       const keyChar = this.keyCodeToChar(event.keyCode)
-      this.executeMapping(keyChar)
+      this.executeMapping(keyChar, event.modifiers ?? [])
     }
   }
 
@@ -177,17 +178,27 @@ export class KeymapEngine {
   /**
    * 执行按键映射
    */
-  private executeMapping(fromKey: string): void {
+  private executeMapping(fromKey: string, preservedModifiers: ModifierKey[] = []): void {
     const rule = this.rules.get(fromKey)
     if (!rule || !this.keyInjector) {
       return
     }
 
     if (rule.toType === 'combo') {
-      const target = [...rule.to.modifiers, rule.to.key].join('+')
+      const effectiveModifiers = this.mergeModifiers(rule.to.modifiers, preservedModifiers)
+      const target = [...effectiveModifiers, rule.to.key].join('+')
       logger.debug(`Mapping ${fromKey} -> ${target}`)
-      this.keyInjector.injectCombo(rule.to.modifiers, rule.to.key)
+      this.keyInjector.injectCombo(effectiveModifiers, rule.to.key, preservedModifiers)
     }
+  }
+
+  /**
+   * 按稳定顺序合并配置修饰键和物理按住的修饰键
+   */
+  private mergeModifiers(configured: ModifierKey[], preserved: ModifierKey[]): ModifierKey[] {
+    return MODIFIER_KEYS.filter(modifier =>
+      configured.includes(modifier) || preserved.includes(modifier)
+    )
   }
 
   /**

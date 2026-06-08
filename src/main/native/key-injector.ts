@@ -51,11 +51,12 @@ export class KeyInjector {
   /**
    * 注入组合键（如需要扩展）
    */
-  injectCombo(modifiers: ModifierKey[], keyCode: KeyCode): void {
+  injectCombo(modifiers: ModifierKey[], keyCode: KeyCode, preservedModifiers: ModifierKey[] = []): void {
     if (this.native && this.native.injectCombo) {
-      this.native.injectCombo(modifiers, keyCode)
+      this.native.injectCombo(modifiers, keyCode, preservedModifiers)
     } else {
-      console.log(`[Fallback] Inject combo: ${modifiers.join('+')}+${keyCode}`)
+      const effectiveModifiers = [...new Set([...modifiers, ...preservedModifiers])]
+      console.log(`[Fallback] Inject combo: ${effectiveModifiers.join('+')}+${keyCode}`)
     }
   }
 }

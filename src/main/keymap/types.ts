@@ -36,7 +36,7 @@ export interface KeyInterceptor {
 
 export interface KeyInjector {
   injectKey(keyCode: string): void
-  injectCombo(modifiers: ModifierKey[], keyCode: string): void
+  injectCombo(modifiers: ModifierKey[], keyCode: string, preservedModifiers?: ModifierKey[]): void
 }
 
 export { MACOS_KEY_CODES, REVERSE_KEY_CODES } from '../../common/types/keys'

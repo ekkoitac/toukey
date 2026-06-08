@@ -103,6 +103,31 @@ static std::map<std::string, CGEventFlags> modifierFlagMap = {
   {"fn", kCGEventFlagMaskSecondaryFn}
 };
 
+static bool ReadModifierArray(Napi::Env env, Napi::Array input, std::vector<std::string>& output) {
+  for (uint32_t i = 0; i < input.Length(); i++) {
+    Napi::Value value = input.Get(i);
+    if (!value.IsString()) {
+      Napi::TypeError::New(env, "Modifier must be a string").ThrowAsJavaScriptException();
+      return false;
+    }
+
+    std::string modifier = value.As<Napi::String>().Utf8Value();
+    if (std::find(output.begin(), output.end(), modifier) != output.end()) {
+      continue;
+    }
+
+    if (keyCodeMap.find(modifier) == keyCodeMap.end() ||
+        modifierFlagMap.find(modifier) == modifierFlagMap.end()) {
+      Napi::Error::New(env, "Unknown modifier key").ThrowAsJavaScriptException();
+      return false;
+    }
+
+    output.push_back(modifier);
+  }
+
+  return true;
+}
+
 static void PostKeyboardEvent(CGKeyCode keyCode, bool isDown, CGEventFlags flags) {
   CGEventRef event = CGEventCreateKeyboardEvent(nullptr, keyCode, isDown);
   CGEventSetFlags(event, flags);
@@ -155,8 +180,9 @@ private:
   void InjectCombo(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    if (info.Length() < 2 || !info[0].IsArray() || !info[1].IsString()) {
-      Napi::TypeError::New(env, "Expected (modifiers[], keyCode)").ThrowAsJavaScriptException();
+    if (info.Length() < 2 || !info[0].IsArray() || !info[1].IsString() ||
+        (info.Length() >= 3 && !info[2].IsArray())) {
+      Napi::TypeError::New(env, "Expected (modifiers[], keyCode, preservedModifiers[]?)").ThrowAsJavaScriptException();
       return;
     }
 
@@ -170,39 +196,46 @@ private:
     }
 
     std::vector<std::string> modifiers;
+    std::vector<std::string> preservedModifiers;
     std::vector<CGKeyCode> modifierCodes;
     std::vector<CGEventFlags> modifierFlags;
 
-    for (uint32_t i = 0; i < modifiersArray.Length(); i++) {
-      Napi::Value value = modifiersArray.Get(i);
-      if (!value.IsString()) {
-        Napi::TypeError::New(env, "Modifier must be a string").ThrowAsJavaScriptException();
+    if (!ReadModifierArray(env, modifiersArray, modifiers)) {
+      return;
+    }
+    if (info.Length() >= 3) {
+      Napi::Array preservedArray = info[2].As<Napi::Array>();
+      if (!ReadModifierArray(env, preservedArray, preservedModifiers)) {
         return;
       }
+    }
 
-      std::string modifier = value.As<Napi::String>().Utf8Value();
-      if (std::find(modifiers.begin(), modifiers.end(), modifier) != modifiers.end()) {
+    CGEventFlags baseFlags = 0;
+    CGEventFlags targetFlags = 0;
+
+    for (const std::string& modifier : preservedModifiers) {
+      baseFlags |= modifierFlagMap[modifier];
+      if (std::find(modifiers.begin(), modifiers.end(), modifier) == modifiers.end()) {
+        modifiers.push_back(modifier);
+      }
+    }
+
+    for (const std::string& modifier : modifiers) {
+      targetFlags |= modifierFlagMap[modifier];
+      if (std::find(preservedModifiers.begin(), preservedModifiers.end(), modifier) != preservedModifiers.end()) {
         continue;
       }
 
-      auto codeIt = keyCodeMap.find(modifier);
-      auto flagIt = modifierFlagMap.find(modifier);
-      if (codeIt == keyCodeMap.end() || flagIt == modifierFlagMap.end()) {
-        Napi::Error::New(env, "Unknown modifier key").ThrowAsJavaScriptException();
-        return;
-      }
-
-      modifiers.push_back(modifier);
-      modifierCodes.push_back(codeIt->second);
-      modifierFlags.push_back(flagIt->second);
+      modifierCodes.push_back(keyCodeMap[modifier]);
+      modifierFlags.push_back(modifierFlagMap[modifier]);
     }
 
     if (modifierCodes.empty()) {
-      InjectSingleKey(keyIt->second);
+      InjectSingleKey(keyIt->second, targetFlags);
       return;
     }
 
-    CGEventFlags activeFlags = 0;
+    CGEventFlags activeFlags = baseFlags;
 
     for (size_t i = 0; i < modifierCodes.size(); i++) {
       activeFlags |= modifierFlags[i];
@@ -221,10 +254,10 @@ private:
     }
   }
 
-  void InjectSingleKey(CGKeyCode keyCode) {
-    PostKeyboardEvent(keyCode, true, 0);
+  void InjectSingleKey(CGKeyCode keyCode, CGEventFlags flags = 0) {
+    PostKeyboardEvent(keyCode, true, flags);
     usleep(10000);
-    PostKeyboardEvent(keyCode, false, 0);
+    PostKeyboardEvent(keyCode, false, flags);
   }
 };
 
